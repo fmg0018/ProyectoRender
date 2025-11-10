@@ -10,8 +10,9 @@ RUN apk update && apk add --no-cache \
     nodejs \
     npm \
     libpq-dev \
+    linux-headers \
     && rm -rf /var/cache/apk/*
-
+    
 # 3. INSTALACIÓN DE EXTENSIONES DE PHP
 RUN docker-php-ext-install pdo pdo_pgsql bcmath opcache sockets
 
