@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">CRM Sistema Icon</title>
+  <desc id="desc">Rounded square with gradient background and upward chart line</desc>
+  <defs>
+    <linearGradient id="crmGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb" />
+      <stop offset="1" stop-color="#f97316" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="url(#crmGradient)" />
+  <path d="M18 42h28" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-width="4" opacity="0.45" />
+  <path d="M20 38l8-10 7 6 9-14 6 6" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" stroke-width="4" />
+  <circle cx="28" cy="28" r="3" fill="#ffffff" />
+  <circle cx="35" cy="34" r="3" fill="#ffffff" />
+  <circle cx="44" cy="20" r="3" fill="#ffffff" />
+</svg>
