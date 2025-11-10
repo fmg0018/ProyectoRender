@@ -12,7 +12,7 @@ RUN apk update && apk add --no-cache \
     libpq-dev \
     linux-headers \
     && rm -rf /var/cache/apk/*
-    
+
 # 3. INSTALACIÓN DE EXTENSIONES DE PHP
 RUN docker-php-ext-install pdo pdo_pgsql bcmath opcache sockets
 
@@ -27,10 +27,13 @@ WORKDIR /var/www/html
 COPY . .
 
 # 7. COMANDOS DE CONSTRUCCIÓN (Build)
-RUN composer install --no-dev --prefer-dist \
-    && npm install \
-    && npm run build \
-    && php artisan key:generate
+# 7a: Instalar dependencias de PHP
+RUN composer install --no-dev --prefer-dist
+
+# 7b: Instalar y compilar dependencias de Node.
+# Esto es más estable que un comando RUN largo.
+RUN npm install \
+    && npm run build
 
 # 8. PERMISOS
 RUN chown -R www-data:www-data /var/www/html \
