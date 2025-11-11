@@ -1,82 +1,83 @@
-# Usa la imagen base de PHP oficial con FPM en Alpine
-FROM php:8.3-fpm-alpine
+# ------------------------------------------------------------------------------------------
+# Multi-stage Dockerfile para producción de Laravel
+# ------------------------------------------------------------------------------------------
 
-# Argumento para el directorio de la aplicación (por defecto)
-ARG APP_DIR=/var/www/html
+# ==========================================================================================
+# STAGE 1: COMPOSER (Construcción/Instalación de Dependencias)
+# Usa la imagen oficial de Composer para descargar las dependencias de PHP.
+# ==========================================================================================
+FROM composer:latest AS composer
 
-# Instalar dependencias del sistema operativo (Nginx, Supervisor, y extensiones PHP)
-RUN apk update && apk add --no-cache \
-    nginx \
-    supervisor \
-    \
-    # --- 1. DEPENDENCIAS DE COMPILACIÓN (Necesarias para zip, intl, pdo) ---
-    autoconf \
-    build-base \
-    bison \
-    re2c \
-    \
-    # --- 2. DEPENDENCIAS DE RUNTIME Y DESARROLLO (Librerías C/Headers) ---
+# Establece el directorio de trabajo dentro del contenedor
+WORKDIR /app
+
+# Copia el código fuente de la aplicación al contenedor.
+COPY . .
+
+# Instala las dependencias de PHP.
+# Usamos --no-dev para producción y --optimize-autoloader para mejorar el rendimiento.
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+# ==========================================================================================
+# STAGE 2: BUILD (Frontend Assets)
+# Usa un entorno Node.js para compilar los assets de frontend (Vite/Mix)
+# Asume que estás usando Node 20 o superior.
+# ==========================================================================================
+FROM node:20 AS build
+
+WORKDIR /app
+
+# Copia los archivos de configuración y código necesarios
+COPY package.json package-lock.json ./
+COPY vite.config.js ./
+COPY resources/ resources/
+
+# Instala dependencias de Node.js
+RUN npm install
+
+# Compila los assets para producción.
+# Esto genera los archivos estáticos en la carpeta 'public'.
+RUN npm run build
+
+# ==========================================================================================
+# STAGE 3: RUNTIME (Servidor Final - PHP-FPM con Alpine)
+# Utiliza una imagen ligera de PHP para el servidor final.
+# ==========================================================================================
+FROM php:8.3-fpm-alpine AS final
+
+# Instalación de dependencias de sistema y extensiones PHP
+# 'make' es temporal, se elimina al final.
+# mysqli es crucial para bases de datos MySQL/MariaDB.
+RUN apk add --no-cache \
+    curl \
     git \
-    composer \
-    libxml2-dev \
-    sqlite-dev \
-    postgresql-dev \
-    libzip-dev \
-    icu-dev \
-    file \
-    \
-    # --- 3. EXTENSIONES PHP PRE-COMPILADAS (Para evitar el error del 'tokenizer') ---
-    # Instalamos dom, session, fileinfo y tokenizer directamente como paquetes Alpine
-    php83-dom \
-    php83-session \
-    php83-fileinfo \
-    php83-tokenizer \
-    \
-    # Aseguramos que Nginx se ejecute con el mismo usuario que FPM (Corregido el error inicial)
-    && chown -R www-data:www-data /var/lib/nginx /var/www/html \
-    \
-    # --- 4. EXTENSIONES PHP COMPILADAS (Las que se vinculan a las librerías -dev) ---
-    && docker-php-ext-install \
-    pdo_mysql \
-    pdo_sqlite \
+    make \
+    mariadb-client \
     zip \
-    intl \
-    \
-    # --- 5. LIMPIEZA DE DEPENDENCIAS DE COMPILACIÓN (Reducimos el tamaño de la imagen) ---
-    && apk del --no-cache \
-    autoconf \
-    build-base \
-    bison \
-    re2c \
-    \
-    # Limpiar caché residual
-    && rm -rf /var/cache/apk/*
+    unzip \
+    && docker-php-ext-install pdo_mysql mysqli opcache
 
-# Solución para la advertencia de Git sobre propiedad de directorio
-RUN git config --global --add safe.directory ${APP_DIR}
+# Configuración de Opcache: Copia la configuración recomendada
+# Esta es una configuración estándar para producción que reemplaza la de Octane.
+COPY --from=composer /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini /usr/local/etc/php/conf.d/opcache-prod.ini
 
-# Establecer el directorio de trabajo
-WORKDIR ${APP_DIR}
+# Establece el directorio de trabajo para la aplicación
+WORKDIR /var/www
 
-# 1. Copiar la aplicación de Laravel
-COPY . ${APP_DIR}
+# Copia la aplicación desde la etapa 'composer'
+COPY --from=composer /app /var/www
 
-# 2. Instalar dependencias de Composer (Laravel)
-RUN composer install --no-dev --optimize-autoloader
+# Copia los assets compilados desde la etapa 'build'
+COPY --from=build /app/public /var/www/public
 
-# 3. Configurar permisos CRUCIALES para Laravel
-RUN chown -R www-data:www-data ${APP_DIR}/storage \
-    && chown -R www-data:www-data ${APP_DIR}/bootstrap/cache \
-    && chmod -R 775 ${APP_DIR}/storage \
-    && chmod -R 775 ${APP_DIR}/bootstrap/cache
+# Asegura que PHP-FPM tenga permisos sobre la aplicación
+# Usa 'www-data' que es el usuario predeterminado de PHP-FPM
+RUN chown -R www-data:www-data /var/www
 
-# 4. Copiar configuraciones de Supervisor y Nginx
-COPY ./supervisord.conf /etc/supervisord.conf
-COPY ./supervisor_programs.conf /etc/supervisor/conf.d/programs.conf
-COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+# Exponer el puerto de PHP-FPM (9000). Nota: Nginx/Caddy lo usarán internamente.
+# Si solo usas PHP (sin servidor web), podrías usar este puerto, pero en un
+# entorno real como Render, el servidor web (que Render puede inyectar) es clave.
+EXPOSE 9000
 
-# 5. Exponer el puerto
-EXPOSE 8080
-
-# 6. Ejecutar Supervisor (ENTRYPOINT)
-ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+# Comando por defecto para iniciar PHP-FPM (necesario para Render/servidor web)
+CMD ["php-fpm"]

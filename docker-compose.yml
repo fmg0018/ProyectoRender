@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+
+    # Servicio principal de la aplicación web
+    app_web:
+        container_name: laravel_render_app
+        build:
+            context: .
+            dockerfile: Dockerfile
+        volumes:
+            # Mantener para pruebas locales
+            - .:/var/www/html
+        ports:
+            - "8080:8080"
+        environment:
+            # Variables de entorno que Render inyectará
+            APP_NAME: LaravelRenderApp
+            APP_ENV: production
+            APP_DEBUG: "false"
+            # ... el resto de tus variables de entorno ...
+        
+        # CRÍTICO: Indica a Docker/Render que el punto de inicio es este script.
+        command: sh /usr/local/bin/start.sh
