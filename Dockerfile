@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------
 # Etapa 1: Builder (Instalación de dependencias de PHP y Laravel)
-# Usamos PHP 8.2 para resolver los problemas de conectividad de repositorios.
+# Usamos PHP 8.2 para asegurar la compatibilidad con repositorios modernos (Bullseye).
 # ----------------------------------------------------------------------
 FROM php:8.2-fpm-buster as builder
 
@@ -9,7 +9,8 @@ ARG UID=1000
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Instalar dependencias del sistema, herramientas y extensiones de PHP
-RUN apt-get update && apt-get install -y \
+# FIX: Limpiamos la caché de apt antes de la actualización para resolver errores 100.
+RUN rm -rf /var/lib/apt/lists/* && apt-get clean && apt-get update && apt-get install -y \
     git \
     unzip \
     libpng-dev \
@@ -48,8 +49,9 @@ RUN php artisan cache:clear
 # ----------------------------------------------------------------------
 FROM php:8.2-fpm-buster
 
-# Instalar Nginx y procps. Los repositorios de Bullseye (base de 8.2) son estables.
-RUN apt-get update && apt-get install -y \
+# Instalar Nginx y procps. 
+# FIX: Limpieza agresiva de caché y actualización forzada para evitar el error 100.
+RUN rm -rf /var/lib/apt/lists/* && apt-get clean && apt-get update && apt-get install -y \
     nginx \
     procps \
     # Eliminar la configuración default de Nginx para usar la nuestra
