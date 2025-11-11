@@ -59,8 +59,7 @@ RUN sed -i 's/group = nobody/group = nginx/' /etc/php83/php-fpm.d/www.conf
 
 # --- Configuración de Nginx ---
 # Copia el archivo de configuración del sitio (debe tener el 'listen 80')
-COPY .docker/nginx.conf /etc/nginx/conf.d/default.conf
-
+COPY .docker/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 # Establece el directorio de trabajo (ROOT de la aplicación)
 WORKDIR /var/www
 
