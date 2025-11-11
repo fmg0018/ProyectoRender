@@ -43,19 +43,22 @@ RUN chown -R appuser:appuser /var/www
 USER appuser
 RUN composer install --no-dev --prefer-dist --optimize-autoloader
 
-# FIX DE PERMISOS DE ARTISAN: Aseguramos que 'storage' tenga permisos antes de usar artisan
+# FIX DE PERMISOS: Aseguramos que 'storage' tenga permisos antes de usar artisan
 RUN mkdir -p /var/www/storage/framework/cache \
     && chown -R appuser:appuser /var/www/storage
 
 # Ejecutar comandos de Laravel (configuración en tiempo de construcción)
-# FIX FINAL DE ARTISAN: Generamos la clave en bash para evitar el fallo de Artisan.
-RUN php /var/www/artisan config:clear
-RUN php /var/www/artisan cache:clear
-
-# Generación de la APP_KEY directamente en el .env (solo si no existe)
-# Este comando es el reemplazo seguro para 'php artisan key:generate'
+# FIX FINAL DE ARTISAN: Generamos la clave y luego hacemos la limpieza/caché.
 RUN if [ ! -f .env ]; then cp .env.example .env; fi \
-    && if ! grep -q "^APP_KEY=base64:" .env; then echo "APP_KEY=$(php /var/www/artisan key:generate --show)" >> .env; fi
+    && if ! grep -q "^APP_KEY=base64:" .env; then \
+        APP_KEY=$(php /var/www/artisan key:generate --show); \
+        # Usamos sed para actualizar la clave en el archivo .env
+        sed -i "/^APP_KEY=/c\APP_KEY=${APP_KEY}" .env; \
+    fi \
+    && php /var/www/artisan config:clear \
+    && php /var/www/artisan cache:clear \
+    && php /var/www/artisan config:cache \
+    && php /var/www/artisan event:cache
 
 # ----------------------------------------------------------------------
 # Etapa 2: Final (Imagen de producción con Nginx y PHP-FPM)
