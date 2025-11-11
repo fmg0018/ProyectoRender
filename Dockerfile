@@ -47,18 +47,17 @@ RUN mkdir -p /var/www/storage/framework/cache \
     && chown -R appuser:appuser /var/www/storage
 
 # ----------------------------------------------------------------------
-# FIX FINAL DE CACHÉ Y .ENV (Líneas 52-56)
-# Crea el .env y FUERZA CACHE_DRIVER=file para evitar SQLite.
+# FIX DE .ENV Y CACHÉ
+# Creamos .env y ajustamos los drivers para evitar errores de conexión en el build.
 # ----------------------------------------------------------------------
 RUN if [ ! -f .env ]; then cp .env.example .env; fi \
     && sed -i "s/^CACHE_DRIVER=.*$/CACHE_DRIVER=file/" .env \
     && sed -i "s/^DB_CONNECTION=.*$/DB_CONNECTION=pgsql/" .env
 
-# Ejecutar comandos de Laravel para generar la caché
+# Ejecutar comandos de Laravel (SOLO LIMPIEZA)
+# Eliminamos config:cache y event:cache
 RUN php /var/www/artisan config:clear \
-    && php /var/www/artisan cache:clear \
-    && php /var/www/artisan config:cache \
-    && php /var/www/artisan event:cache
+    && php /var/www/artisan cache:clear
 
 # ----------------------------------------------------------------------
 # Etapa 2: Final (Imagen de producción con Nginx y PHP-FPM)
