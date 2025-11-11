@@ -1,6 +1,5 @@
 # ----------------------------------------------------------------------
 # Etapa 1: Builder (Instalación de dependencias de Composer y compilación)
-# Usamos PHP 8.2-FPM-Alpine: más ligero y estable.
 # ----------------------------------------------------------------------
 FROM php:8.2-fpm-alpine as builder
 
@@ -43,19 +42,18 @@ RUN chown -R appuser:appuser /var/www
 USER appuser
 RUN composer install --no-dev --prefer-dist --optimize-autoloader
 
-# FIX DE PERMISOS: Aseguramos que 'storage' tenga permisos antes de usar artisan
+# FIX DE PERMISOS: Aseguramos que 'storage' tenga permisos
 RUN mkdir -p /var/www/storage/framework/cache \
     && chown -R appuser:appuser /var/www/storage
 
-# Ejecutar comandos de Laravel (configuración en tiempo de construcción)
-# FIX FINAL DE ARTISAN: Generamos la clave y luego hacemos la limpieza/caché.
-RUN if [ ! -f .env ]; then cp .env.example .env; fi \
-    && if ! grep -q "^APP_KEY=base64:" .env; then \
-        APP_KEY=$(php /var/www/artisan key:generate --show); \
-        # Usamos sed para actualizar la clave en el archivo .env
-        sed -i "/^APP_KEY=/c\APP_KEY=${APP_KEY}" .env; \
-    fi \
-    && php /var/www/artisan config:clear \
+# ----------------------------------------------------------------------
+# FIX FINAL DE ARTISAN (Líneas 50-51)
+# Si no existe .env (que es lo normal en el build), lo crea a partir de .env.example.
+# ----------------------------------------------------------------------
+RUN if [ ! -f .env ]; then cp .env.example .env; fi
+
+# Ejecutar comandos de Laravel (solo caché, SIN APP_KEY en el build)
+RUN php /var/www/artisan config:clear \
     && php /var/www/artisan cache:clear \
     && php /var/www/artisan config:cache \
     && php /var/www/artisan event:cache
