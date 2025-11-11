@@ -46,12 +46,15 @@ RUN composer install --no-dev --prefer-dist --optimize-autoloader
 RUN mkdir -p /var/www/storage/framework/cache \
     && chown -R appuser:appuser /var/www/storage
 
-# FIX FINAL (Línea 51): Forzamos el driver de caché a 'file' para evitar errores de SQLite.
-RUN if [ ! -f .env ]; then cp .env.example .env; fi
+# ----------------------------------------------------------------------
+# FIX FINAL DE CACHÉ Y .ENV (Líneas 52-56)
+# Crea el .env y FUERZA CACHE_DRIVER=file para evitar SQLite.
+# ----------------------------------------------------------------------
+RUN if [ ! -f .env ]; then cp .env.example .env; fi \
+    && sed -i "s/^CACHE_DRIVER=.*$/CACHE_DRIVER=file/" .env \
+    && sed -i "s/^DB_CONNECTION=.*$/DB_CONNECTION=pgsql/" .env
 
-ENV CACHE_DRIVER=file
-
-# Ejecutar comandos de Laravel (solo caché, SIN APP_KEY en el build)
+# Ejecutar comandos de Laravel para generar la caché
 RUN php /var/www/artisan config:clear \
     && php /var/www/artisan cache:clear \
     && php /var/www/artisan config:cache \
