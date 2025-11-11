@@ -48,8 +48,8 @@ RUN php artisan cache:clear
 FROM php:7.4-fpm-buster
 
 # Instalar Nginx y procps (necesario para el script de entrada que gestiona procesos)
-# La base 'php:7.4-fpm-buster' ya usa un repositorio activo.
-RUN apt-get update && apt-get install -y \
+# Corregimos el error 100 forzando la limpieza y actualización de apt antes de instalar
+RUN rm -rf /var/lib/apt/lists/* && apt-get clean && apt-get update && apt-get install -y \
     nginx \
     procps \
     # Eliminar la configuración default de Nginx para usar la nuestra
