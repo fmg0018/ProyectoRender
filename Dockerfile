@@ -1,5 +1,8 @@
 # ------------------------------------------------------------------------------------------
 # Multi-stage Dockerfile para Laravel (Nginx + PHP-FPM)
+#
+# Este archivo define cómo se construye la imagen de Docker que Render usará.
+# Está dividido en etapas para optimizar el tamaño final de la imagen.
 # ------------------------------------------------------------------------------------------
 
 # ==========================================================================================
@@ -10,9 +13,9 @@ FROM composer:latest AS composer
 WORKDIR /app
 # Copia los archivos necesarios para Composer
 COPY composer.json composer.lock ./
-# Copia todo el resto del código
+# Copia todo el resto del código del proyecto
 COPY . .
-# Instala las dependencias de producción
+# Instala las dependencias de producción (sin desarrollo)
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
 # ==========================================================================================
@@ -21,12 +24,12 @@ RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoload
 FROM node:20 AS build
 
 WORKDIR /app
-# Copia los archivos de Node
+# Copia archivos de Node
 COPY package.json package-lock.json ./
 # Copia la configuración de Vite y la carpeta de recursos
 COPY vite.config.js ./
 COPY resources/ resources/
-# Instala las dependencias y compila
+# Instala las dependencias y compila los assets
 RUN npm install
 RUN npm run build
 
@@ -36,8 +39,10 @@ RUN npm run build
 # ==========================================================================================
 FROM nginx:stable-alpine AS final
 
-# Instalar dependencias de sistema y PHP-FPM (versión 8.3 de PHP)
+# Instalar PHP-FPM y las extensiones necesarias
+# Usamos 'php83' para asegurar compatibilidad.
 RUN apk add --no-cache \
+    php83 \
     php83-fpm \
     php83-mysqli \
     php83-pdo_mysql \
@@ -47,6 +52,9 @@ RUN apk add --no-cache \
     php83-dom \
     php83-ctype \
     php83-session \
+    php83-mbstring \
+    php83-gd \
+    # Limpieza de caché para reducir tamaño
     && rm -rf /var/cache/apk/* /tmp/*
 
 # --- Configuración de PHP-FPM ---
@@ -58,24 +66,30 @@ RUN sed -i 's/user = nobody/user = nginx/' /etc/php83/php-fpm.d/www.conf
 RUN sed -i 's/group = nobody/group = nginx/' /etc/php83/php-fpm.d/www.conf
 
 # --- Configuración de Nginx ---
-# Copia el archivo de configuración del sitio (debe tener el 'listen 80')
+# Copia el archivo de configuración del sitio
+# Asume que tienes el archivo .docker/nginx/nginx.conf
 COPY .docker/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 # Establece el directorio de trabajo (ROOT de la aplicación)
 WORKDIR /var/www
 
-# Copia el código de Laravel (Archivos PHP y Vendor)
+# Copia el código de Laravel (Archivos PHP y Vendor) desde la etapa Composer
 COPY --from=composer /app /var/www
 
-# Copia los assets compilados a la carpeta public de Laravel
+# Copia los assets compilados a la carpeta public de Laravel desde la etapa Build
 COPY --from=build /app/public /var/www/public
+
+# Generar la clave de la aplicación (APP_KEY) si no existe. 
+# Esto es crítico para que Laravel funcione.
+RUN if [ ! -f .env ] ; then cp .env.example .env; fi \
+    && php83 artisan key:generate
 
 # Permisos de Laravel (storage) para el usuario 'nginx'
 RUN chown -R nginx:nginx /var/www/storage /var/www/bootstrap/cache \
     && chmod -R 775 /var/www/storage /var/www/bootstrap/cache
 
-# Render buscará este puerto (80)
+# Puerto expuesto (Render usará este puerto 80)
 EXPOSE 80
 
-# Comando final: Arranca PHP-FPM en background (&&) y Nginx en foreground.
-# Esta es la línea clave para que ambos servicios corran en un solo contenedor.
+# Comando de arranque final: Arranca PHP-FPM en background (&&) y Nginx en foreground.
+# Esta línea mantiene el contenedor corriendo.
 CMD php-fpm83 && nginx -g 'daemon off;'

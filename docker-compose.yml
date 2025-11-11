@@ -1,24 +1,21 @@
 version: '3.8'
 
 services:
+  app:
+    # Usa el Dockerfile en este directorio
+    build: .
+    # Mapea el puerto 80 del contenedor al puerto 8000 de tu máquina (http://localhost:8000)
+    ports:
+      - "8000:80"
+    # Variables de entorno mínimas para Laravel
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+    networks:
+      - web_network
+    restart: always
 
-    # Servicio principal de la aplicación web
-    app_web:
-        container_name: laravel_render_app
-        build:
-            context: .
-            dockerfile: Dockerfile
-        volumes:
-            # Mantener para pruebas locales
-            - .:/var/www/html
-        ports:
-            - "8080:8080"
-        environment:
-            # Variables de entorno que Render inyectará
-            APP_NAME: LaravelRenderApp
-            APP_ENV: production
-            APP_DEBUG: "false"
-            # ... el resto de tus variables de entorno ...
-        
-        # CRÍTICO: Indica a Docker/Render que el punto de inicio es este script.
-        command: sh /usr/local/bin/start.sh
+# Red para la comunicación entre contenedores (aunque solo haya uno)
+networks:
+  web_network:
+    driver: bridge
