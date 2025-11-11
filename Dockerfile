@@ -1,7 +1,8 @@
 # ----------------------------------------------------------------------
 # Etapa 1: Builder (Instalación de dependencias de PHP y Laravel)
+# Usamos PHP 8.2 para resolver los problemas de conectividad de repositorios.
 # ----------------------------------------------------------------------
-FROM php:7.4-fpm-buster as builder
+FROM php:8.2-fpm-buster as builder
 
 # Definir argumentos de compilación y entorno
 ARG UID=1000
@@ -43,13 +44,12 @@ RUN php artisan cache:clear
 
 # ----------------------------------------------------------------------
 # Etapa 2: Final (Imagen de producción con Nginx y PHP-FPM)
-# Usamos la misma base PHP para garantizar que el runtime sea compatible.
+# Usamos la misma base PHP 8.2.
 # ----------------------------------------------------------------------
-FROM php:7.4-fpm-buster
+FROM php:8.2-fpm-buster
 
-# Instalar Nginx y procps (necesario para el script de entrada que gestiona procesos)
-# Corregimos el error 100 forzando la limpieza y actualización de apt antes de instalar
-RUN rm -rf /var/lib/apt/lists/* && apt-get clean && apt-get update && apt-get install -y \
+# Instalar Nginx y procps. Los repositorios de Bullseye (base de 8.2) son estables.
+RUN apt-get update && apt-get install -y \
     nginx \
     procps \
     # Eliminar la configuración default de Nginx para usar la nuestra
