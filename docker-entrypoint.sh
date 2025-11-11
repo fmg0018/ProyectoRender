@@ -1,27 +1,43 @@
-#!/bin/bash
-
-# --- docker-entrypoint.sh ---
-# Este script se encarga de iniciar los servicios necesarios 
-# (PHP-FPM y Nginx) dentro del contenedor de manera segura.
-
-# Detiene la ejecución si algún comando falla
+#!/bin/sh
 set -e
 
-# Esta sección es opcional y se utiliza para ejecutar comandos de Laravel
-# (como cache:clear, migrate, etc.) justo antes de iniciar los servidores.
-# if [ -f /var/www/artisan ]; then
-#     echo "Ejecutando comandos de Laravel como 'cache:clear' y 'config:cache'..."
-#     # su - www-data -s /bin/bash -c "php /var/www/artisan cache:clear"
-#     # su - www-data -s /bin/bash -c "php /var/www/artisan config:cache"
-# fi
+# --- 1. PREPARACIÓN DE LARAVEL EN RUNTIME ---
+echo "Ejecutando Laravel Artisan comandos en runtime..."
 
-# 1. Iniciar PHP-FPM en segundo plano
-# La opción -D lo ejecuta como un demonio y lo devuelve al fondo.
+# 1. Copiar .env si no existe (Crucial para que Laravel inicie)
+if [ ! -f .env ]; then
+    echo "Copiando .env.example a .env"
+    cp .env.example .env
+fi
+
+# 2. Generar APP_KEY si no está definida
+if ! grep -q "^APP_KEY=base64:" .env; then
+    echo "Generando APP_KEY..."
+    # Ejecutamos key:generate. Esto también actualiza el .env
+    php /var/www/artisan key:generate
+fi
+
+# 3. Limpiar y cachear configuración
+echo "Limpiando y cacheando la configuración..."
+
+# Ajustar permisos antes de escribir la caché (www-data es el usuario de PHP-FPM)
+chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
+
+php /var/www/artisan config:clear
+php /var/www/artisan cache:clear
+php /var/www/artisan config:cache
+php /var/www/artisan route:cache
+
+# 4. Ejecutar migraciones (Necesario para la base de datos)
+echo "Ejecutando migraciones..."
+php /var/www/artisan migrate --force
+
+# --- 2. INICIO DE SERVICIOS ---
+
+# Iniciar PHP-FPM en segundo plano (usamos el ejecutable simple 'php-fpm')
 echo "Iniciando PHP-FPM..."
-/usr/sbin/php-fpm7.4 -D
+php-fpm -D
 
-# 2. Iniciar Nginx en primer plano
-# Utilizamos 'exec' para que Nginx tome el PID 1, asegurando que Docker 
-# pueda manejar correctamente las señales de apagado del contenedor.
+# Iniciar Nginx en primer plano
 echo "Iniciando Nginx..."
 exec nginx -g "daemon off;"
