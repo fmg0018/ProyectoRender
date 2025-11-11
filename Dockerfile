@@ -46,11 +46,10 @@ RUN composer install --no-dev --prefer-dist --optimize-autoloader
 RUN mkdir -p /var/www/storage/framework/cache \
     && chown -R appuser:appuser /var/www/storage
 
-# ----------------------------------------------------------------------
-# FIX FINAL DE ARTISAN (Líneas 50-51)
-# Si no existe .env (que es lo normal en el build), lo crea a partir de .env.example.
-# ----------------------------------------------------------------------
+# FIX FINAL (Línea 51): Forzamos el driver de caché a 'file' para evitar errores de SQLite.
 RUN if [ ! -f .env ]; then cp .env.example .env; fi
+
+ENV CACHE_DRIVER=file
 
 # Ejecutar comandos de Laravel (solo caché, SIN APP_KEY en el build)
 RUN php /var/www/artisan config:clear \
