@@ -1,83 +1,82 @@
 # ------------------------------------------------------------------------------------------
-# Multi-stage Dockerfile para producción de Laravel
+# Multi-stage Dockerfile para Laravel (Nginx + PHP-FPM)
 # ------------------------------------------------------------------------------------------
 
 # ==========================================================================================
-# STAGE 1: COMPOSER (Construcción/Instalación de Dependencias)
-# Usa la imagen oficial de Composer para descargar las dependencias de PHP.
+# ETAPA 1: COMPOSER (Instalación de Dependencias PHP)
 # ==========================================================================================
 FROM composer:latest AS composer
 
-# Establece el directorio de trabajo dentro del contenedor
 WORKDIR /app
-
-# Copia el código fuente de la aplicación al contenedor.
+# Copia los archivos necesarios para Composer
+COPY composer.json composer.lock ./
+# Copia todo el resto del código
 COPY . .
-
-# Instala las dependencias de PHP.
-# Usamos --no-dev para producción y --optimize-autoloader para mejorar el rendimiento.
+# Instala las dependencias de producción
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
 # ==========================================================================================
-# STAGE 2: BUILD (Frontend Assets)
-# Usa un entorno Node.js para compilar los assets de frontend (Vite/Mix)
-# Asume que estás usando Node 20 o superior.
+# ETAPA 2: BUILD (Compilación de Assets Frontend con Node/Vite)
 # ==========================================================================================
 FROM node:20 AS build
 
 WORKDIR /app
-
-# Copia los archivos de configuración y código necesarios
+# Copia los archivos de Node
 COPY package.json package-lock.json ./
+# Copia la configuración de Vite y la carpeta de recursos
 COPY vite.config.js ./
 COPY resources/ resources/
-
-# Instala dependencias de Node.js
+# Instala las dependencias y compila
 RUN npm install
-
-# Compila los assets para producción.
-# Esto genera los archivos estáticos en la carpeta 'public'.
 RUN npm run build
 
 # ==========================================================================================
-# STAGE 3: RUNTIME (Servidor Final - PHP-FPM con Alpine)
-# Utiliza una imagen ligera de PHP para el servidor final.
+# ETAPA 3: RUNTIME (Servidor Final - Nginx + PHP-FPM)
+# Usamos nginx:stable-alpine como base para un servidor ligero.
 # ==========================================================================================
-FROM php:8.3-fpm-alpine AS final
+FROM nginx:stable-alpine AS final
 
-# Instalación de dependencias de sistema y extensiones PHP
-# 'make' es temporal, se elimina al final.
-# mysqli es crucial para bases de datos MySQL/MariaDB.
+# Instalar dependencias de sistema y PHP-FPM (versión 8.3 de PHP)
 RUN apk add --no-cache \
-    curl \
-    git \
-    make \
-    mariadb-client \
-    zip \
-    unzip \
-    && docker-php-ext-install pdo_mysql mysqli opcache
+    php83-fpm \
+    php83-mysqli \
+    php83-pdo_mysql \
+    php83-opcache \
+    php83-zip \
+    php83-json \
+    php83-dom \
+    php83-ctype \
+    php83-session \
+    && rm -rf /var/cache/apk/* /tmp/*
 
-# Configuración de Opcache: Copia la configuración recomendada
-# Esta es una configuración estándar para producción que reemplaza la de Octane.
-COPY --from=composer /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini /usr/local/etc/php/conf.d/opcache-prod.ini
+# --- Configuración de PHP-FPM ---
+# Copia la configuración de opcache
+COPY --from=composer /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini /etc/php83/conf.d/opcache-prod.ini
+# Configura PHP-FPM para escuchar en el puerto 9000 y usar el usuario 'nginx'
+RUN sed -i 's/listen = 127.0.0.1:9000/listen = 9000/' /etc/php83/php-fpm.d/www.conf
+RUN sed -i 's/user = nobody/user = nginx/' /etc/php83/php-fpm.d/www.conf
+RUN sed -i 's/group = nobody/group = nginx/' /etc/php83/php-fpm.d/www.conf
 
-# Establece el directorio de trabajo para la aplicación
+# --- Configuración de Nginx ---
+# Copia el archivo de configuración del sitio (debe tener el 'listen 80')
+COPY .docker/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Establece el directorio de trabajo (ROOT de la aplicación)
 WORKDIR /var/www
 
-# Copia la aplicación desde la etapa 'composer'
+# Copia el código de Laravel (Archivos PHP y Vendor)
 COPY --from=composer /app /var/www
 
-# Copia los assets compilados desde la etapa 'build'
+# Copia los assets compilados a la carpeta public de Laravel
 COPY --from=build /app/public /var/www/public
 
-# Asegura que PHP-FPM tenga permisos sobre la aplicación
-# Usa 'www-data' que es el usuario predeterminado de PHP-FPM
-RUN chown -R www-data:www-data /var/www
+# Permisos de Laravel (storage) para el usuario 'nginx'
+RUN chown -R nginx:nginx /var/www/storage /var/www/bootstrap/cache \
+    && chmod -R 775 /var/www/storage /var/www/bootstrap/cache
 
-# Exponer el puerto de PHP-FPM (9000). Nota: Nginx/Caddy lo usarán internamente.
-# Si solo usas PHP (sin servidor web), podrías usar este puerto, pero en un
-# entorno real como Render, el servidor web (que Render puede inyectar) es clave.
-EXPOSE 9000
+# Render buscará este puerto (80)
+EXPOSE 80
 
-# Comando por defecto para iniciar PHP-FPM (necesario para Render/servidor web)
-CMD ["php-fpm"]
+# Comando final: Arranca PHP-FPM en background (&&) y Nginx en foreground.
+# Esta es la línea clave para que ambos servicios corran en un solo contenedor.
+CMD php-fpm83 && nginx -g 'daemon off;'
