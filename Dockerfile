@@ -1,6 +1,5 @@
 # ----------------------------------------------------------------------
 # Etapa 1: Builder (Instalación de dependencias de PHP y Laravel)
-# Utiliza una imagen base de PHP-FPM para instalar Composer y dependencias.
 # ----------------------------------------------------------------------
 FROM php:7.4-fpm-buster as builder
 
@@ -17,7 +16,7 @@ RUN apt-get update && apt-get install -y \
     libonig-dev \
     libzip-dev \
     libpq-dev \
-    # Compilar extensiones de PHP necesarias (PostgreSQL, mbstring, gd, zip, etc.)
+    # Compilar extensiones de PHP necesarias
     && docker-php-ext-install pdo pdo_pgsql mbstring exif pcntl bcmath gd zip \
     # Limpiar caché y archivos temporales
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/*
@@ -44,30 +43,18 @@ RUN php artisan cache:clear
 
 # ----------------------------------------------------------------------
 # Etapa 2: Final (Imagen de producción con Nginx y PHP-FPM)
-# Imagen ligera basada en Debian para producción
+# Usamos la misma base PHP para garantizar que el runtime sea compatible.
 # ----------------------------------------------------------------------
-FROM debian:buster-slim
-
-ENV DEBIAN_FRONTEND=noninteractive
-# Asegurar que los binarios estén en el PATH
-ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+FROM php:7.4-fpm-buster
 
 # Instalar Nginx y procps (necesario para el script de entrada que gestiona procesos)
+# La base 'php:7.4-fpm-buster' ya usa un repositorio activo.
 RUN apt-get update && apt-get install -y \
     nginx \
     procps \
     # Eliminar la configuración default de Nginx para usar la nuestra
     && rm -f /etc/nginx/sites-enabled/default \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/*
-
-# Copiar el runtime de PHP-FPM (binarios y configuraciones) desde la etapa builder
-# Esto es CRUCIAL para que PHP-FPM esté disponible en la imagen final
-COPY --from=builder /usr/lib/php /usr/lib/php
-COPY --from=builder /usr/local/bin/php /usr/local/bin/php
-COPY --from=builder /usr/local/etc/php /usr/local/etc/php
-COPY --from=builder /etc/php /etc/php
-COPY --from=builder /usr/sbin/php-fpm7.4 /usr/sbin/php-fpm7.4
-RUN chmod +x /usr/sbin/php-fpm7.4
 
 # Copiar el código de la aplicación (con vendor ya instalado)
 # Se establece el usuario 'www-data' (estándar de Nginx/PHP) como propietario
