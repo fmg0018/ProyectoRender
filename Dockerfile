@@ -1,95 +1,91 @@
-# ------------------------------------------------------------------------------------------
-# Multi-stage Dockerfile para Laravel (Nginx + PHP-FPM)
-#
-# Este archivo define cómo se construye la imagen de Docker que Render usará.
-# Está dividido en etapas para optimizar el tamaño final de la imagen.
-# ------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------
+# Etapa 1: Builder (Instalación de dependencias de PHP y Laravel)
+# Utiliza una imagen base de PHP-FPM para instalar Composer y dependencias.
+# ----------------------------------------------------------------------
+FROM php:7.4-fpm-buster as builder
 
-# ==========================================================================================
-# ETAPA 1: COMPOSER (Instalación de Dependencias PHP)
-# ==========================================================================================
-FROM composer:latest AS composer
+# Definir argumentos de compilación y entorno
+ARG UID=1000
+ENV DEBIAN_FRONTEND=noninteractive
 
-WORKDIR /app
-# Copia los archivos necesarios para Composer
-COPY composer.json composer.lock ./
-# Copia todo el resto del código del proyecto
-COPY . .
-# Instala las dependencias de producción (sin desarrollo)
-RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+# Instalar dependencias del sistema, herramientas y extensiones de PHP
+RUN apt-get update && apt-get install -y \
+    git \
+    unzip \
+    libpng-dev \
+    libxml2-dev \
+    libonig-dev \
+    libzip-dev \
+    libpq-dev \
+    # Compilar extensiones de PHP necesarias (PostgreSQL, mbstring, gd, zip, etc.)
+    && docker-php-ext-install pdo pdo_pgsql mbstring exif pcntl bcmath gd zip \
+    # Limpiar caché y archivos temporales
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/*
 
-# ==========================================================================================
-# ETAPA 2: BUILD (Compilación de Assets Frontend con Node/Vite)
-# ==========================================================================================
-FROM node:20 AS build
+# Instalar Composer globalmente
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-WORKDIR /app
-# Copia archivos de Node
-COPY package.json package-lock.json ./
-# Copia la configuración de Vite y la carpeta de recursos
-COPY vite.config.js ./
-COPY resources/ resources/
-# Instala las dependencias y compila los assets
-RUN npm install
-RUN npm run build
-
-# ==========================================================================================
-# ETAPA 3: RUNTIME (Servidor Final - Nginx + PHP-FPM)
-# Usamos nginx:stable-alpine como base para un servidor ligero.
-# ==========================================================================================
-FROM nginx:stable-alpine AS final
-
-# Instalar PHP-FPM y las extensiones necesarias
-# Usamos 'php83' para asegurar compatibilidad.
-RUN apk add --no-cache \
-    php83 \
-    php83-fpm \
-    php83-mysqli \
-    php83-pdo_mysql \
-    php83-opcache \
-    php83-zip \
-    php83-json \
-    php83-dom \
-    php83-ctype \
-    php83-session \
-    php83-mbstring \
-    php83-gd \
-    # Limpieza de caché para reducir tamaño
-    && rm -rf /var/cache/apk/* /tmp/*
-
-# --- Configuración de PHP-FPM ---
-# Copia la configuración de opcache
-COPY --from=composer /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini /etc/php83/conf.d/opcache-prod.ini
-# Configura PHP-FPM para escuchar en el puerto 9000 y usar el usuario 'nginx'
-RUN sed -i 's/listen = 127.0.0.1:9000/listen = 9000/' /etc/php83/php-fpm.d/www.conf
-RUN sed -i 's/user = nobody/user = nginx/' /etc/php83/php-fpm.d/www.conf
-RUN sed -i 's/group = nobody/group = nginx/' /etc/php83/php-fpm.d/www.conf
-
-# --- Configuración de Nginx ---
-# Copia el archivo de configuración del sitio
-# Asume que tienes el archivo .docker/nginx/nginx.conf
-COPY .docker/nginx/nginx.conf /etc/nginx/conf.d/default.conf
-# Establece el directorio de trabajo (ROOT de la aplicación)
+# Crear usuario de aplicación 'appuser' (recomendado para seguridad)
+RUN useradd -u $UID -ms /bin/bash appuser
 WORKDIR /var/www
 
-# Copia el código de Laravel (Archivos PHP y Vendor) desde la etapa Composer
-COPY --from=composer /app /var/www
+# Copiar el código fuente y establecer permisos
+COPY . /var/www
+RUN chown -R appuser:appuser /var/www
 
-# Copia los assets compilados a la carpeta public de Laravel desde la etapa Build
-COPY --from=build /app/public /var/www/public
+# Instalar dependencias de Laravel (como usuario no root)
+USER appuser
+RUN composer install --no-dev --prefer-dist --optimize-autoloader
 
-# Generar la clave de la aplicación (APP_KEY) si no existe. 
-# Esto es crítico para que Laravel funcione.
-RUN if [ ! -f .env ] ; then cp .env.example .env; fi \
-    && php83 artisan key:generate
+# Ejecutar comandos de Laravel (configuración en tiempo de construcción)
+RUN php artisan key:generate
+RUN php artisan config:clear
+RUN php artisan cache:clear
 
-# Permisos de Laravel (storage) para el usuario 'nginx'
-RUN chown -R nginx:nginx /var/www/storage /var/www/bootstrap/cache \
-    && chmod -R 775 /var/www/storage /var/www/bootstrap/cache
+# ----------------------------------------------------------------------
+# Etapa 2: Final (Imagen de producción con Nginx y PHP-FPM)
+# Imagen ligera basada en Debian para producción
+# ----------------------------------------------------------------------
+FROM debian:buster-slim
 
-# Puerto expuesto (Render usará este puerto 80)
+ENV DEBIAN_FRONTEND=noninteractive
+# Asegurar que los binarios estén en el PATH
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Instalar Nginx y procps (necesario para el script de entrada que gestiona procesos)
+RUN apt-get update && apt-get install -y \
+    nginx \
+    procps \
+    # Eliminar la configuración default de Nginx para usar la nuestra
+    && rm -f /etc/nginx/sites-enabled/default \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/*
+
+# Copiar el runtime de PHP-FPM (binarios y configuraciones) desde la etapa builder
+# Esto es CRUCIAL para que PHP-FPM esté disponible en la imagen final
+COPY --from=builder /usr/lib/php /usr/lib/php
+COPY --from=builder /usr/local/bin/php /usr/local/bin/php
+COPY --from=builder /usr/local/etc/php /usr/local/etc/php
+COPY --from=builder /etc/php /etc/php
+COPY --from=builder /usr/sbin/php-fpm7.4 /usr/sbin/php-fpm7.4
+RUN chmod +x /usr/sbin/php-fpm7.4
+
+# Copiar el código de la aplicación (con vendor ya instalado)
+# Se establece el usuario 'www-data' (estándar de Nginx/PHP) como propietario
+COPY --from=builder --chown=www-data:www-data /var/www /var/www
+
+# Configurar directorios de cache/storage de Laravel y socket de PHP-FPM
+RUN mkdir -p /run/php \
+    && chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
+
+# Copiar la configuración de Nginx (debe existir en .docker/nginx/default.conf)
+COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+
+# Copiar y dar permisos de ejecución al script de entrada (debe existir en la raíz)
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Puerto de Nginx
 EXPOSE 80
 
-# Comando de arranque final: Arranca PHP-FPM en background (&&) y Nginx en foreground.
-# Esta línea mantiene el contenedor corriendo.
-CMD php-fpm83 && nginx -g 'daemon off;'
+# Usar el script de entrada que inicia ambos servicios
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

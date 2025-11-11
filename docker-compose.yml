@@ -1,21 +1,43 @@
 version: '3.8'
 
+# Este archivo solo define el servicio de la aplicación web (app).
+# Se omiten todos los servicios y variables de la base de datos para pruebas simples.
+
 services:
   app:
-    # Usa el Dockerfile en este directorio
-    build: .
-    # Mapea el puerto 80 del contenedor al puerto 8000 de tu máquina (http://localhost:8000)
+    # 1. CONSTRUCCIÓN DE LA IMAGEN:
+    # Indica a Docker que construya la imagen usando el Dockerfile en el directorio actual (.).
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    container_name: laravel_web_simple_test
+    
+    # 2. PUERTOS (Esencial para pruebas locales):
+    # Mapea el puerto 80 del host (tu máquina) al puerto 80 del contenedor.
+    # Esto asume que tu Nginx dentro del contenedor está escuchando en el puerto 80.
     ports:
-      - "8000:80"
-    # Variables de entorno mínimas para Laravel
+      - "80:80"
+    
+    # 3. VOLÚMENES (Para desarrollo local y sincronización de código):
+    # Mapea el código de tu proyecto local al contenedor.
+    volumes:
+      - .:/var/www
+      
+    # 4. ENTORNO:
+    # Variables esenciales. Usamos 'sqlite' como conexión DB para evitar errores de conexión.
     environment:
+      # Configuración general
       - APP_ENV=production
       - APP_DEBUG=false
-    networks:
-      - web_network
-    restart: always
+      - APP_KEY=base64:your-app-key-here-get-it-from-laravel-env
 
-# Red para la comunicación entre contenedores (aunque solo haya uno)
-networks:
-  web_network:
-    driver: bridge
+      # Configuraciones dummy de la base de datos (para evitar fallos de conexión a MySQL)
+      - DB_CONNECTION=sqlite 
+      - DB_HOST=
+      - DB_PORT=
+      - DB_DATABASE=
+      - DB_USERNAME=
+      - DB_PASSWORD=
+      
+    restart: unless-stopped
