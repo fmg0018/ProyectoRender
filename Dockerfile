@@ -9,8 +9,6 @@ ARG UID=1000
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Instalar dependencias del sistema y extensiones de PHP (Alpine usa 'apk')
-# Este comando es el FIX final para el error 1: instala todas las dependencias
-# de compilación antes de intentar habilitar las extensiones.
 RUN apk update && apk add --no-cache \
     git \
     unzip \
@@ -27,7 +25,7 @@ RUN apk update && apk add --no-cache \
     # Compilar y habilitar extensiones de PHP
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) pdo pdo_pgsql pdo_mysql opcache gd \
-    # Limpieza: Eliminamos las dependencias de desarrollo/compilación para reducir el tamaño
+    # Limpieza: Eliminamos las dependencias de desarrollo/compilación
     && apk del --no-cache freetype-dev libjpeg-turbo-dev libpng-dev libxml2-dev libpq-dev
 
 # Instalar Composer globalmente
@@ -45,7 +43,13 @@ RUN chown -R appuser:appuser /var/www
 USER appuser
 RUN composer install --no-dev --prefer-dist --optimize-autoloader
 
+# FIX DE PERMISOS DE ARTISAN: Aseguramos que 'storage' tenga permisos antes de usar artisan
+# Esta línea crea la carpeta 'storage/framework/cache' y la hace escribible.
+RUN mkdir -p /var/www/storage/framework/cache \
+    && chown -R appuser:appuser /var/www/storage
+
 # Ejecutar comandos de Laravel (configuración en tiempo de construcción)
+# Ahora, Laravel ya no fallará en la línea 55 (antes 49)
 RUN php artisan key:generate
 RUN php artisan config:clear
 RUN php artisan cache:clear
@@ -55,14 +59,13 @@ RUN php artisan cache:clear
 # ----------------------------------------------------------------------
 FROM php:8.2-fpm-alpine
 
-# Instalar Nginx y procps (Alpine usa 'apk' que es más robusto)
+# Instalar Nginx y procps
 RUN apk update && apk add --no-cache nginx procps
 
-# Copiar el código de la aplicación (con vendor ya instalado)
-# El usuario 'www-data' ya existe en esta base
+# Copiar el código de la aplicación
 COPY --from=builder --chown=www-data:www-data /var/www /var/www
 
-# Configurar directorios de cache/storage de Laravel y socket de PHP-FPM
+# Configurar directorios finales de Laravel y socket de PHP-FPM
 RUN mkdir -p /run/php \
     && chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 
