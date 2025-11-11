@@ -1,5 +1,6 @@
 # ----------------------------------------------------------------------
 # Etapa 1: Builder (Instalación de dependencias de Composer y compilación)
+# SOLO INSTALACIÓN, SIN COMANDOS DE LARAVEL.
 # ----------------------------------------------------------------------
 FROM php:8.2-fpm-alpine as builder
 
@@ -45,19 +46,6 @@ RUN composer install --no-dev --prefer-dist --optimize-autoloader
 # FIX DE PERMISOS: Aseguramos que 'storage' tenga permisos
 RUN mkdir -p /var/www/storage/framework/cache \
     && chown -R appuser:appuser /var/www/storage
-
-# ----------------------------------------------------------------------
-# FIX DE .ENV Y CACHÉ
-# Creamos .env y ajustamos los drivers para evitar errores de conexión en el build.
-# ----------------------------------------------------------------------
-RUN if [ ! -f .env ]; then cp .env.example .env; fi \
-    && sed -i "s/^CACHE_DRIVER=.*$/CACHE_DRIVER=file/" .env \
-    && sed -i "s/^DB_CONNECTION=.*$/DB_CONNECTION=pgsql/" .env
-
-# Ejecutar comandos de Laravel (SOLO LIMPIEZA)
-# Eliminamos config:cache y event:cache
-RUN php /var/www/artisan config:clear \
-    && php /var/www/artisan cache:clear
 
 # ----------------------------------------------------------------------
 # Etapa 2: Final (Imagen de producción con Nginx y PHP-FPM)
