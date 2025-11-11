@@ -1,36 +1,37 @@
 # ----------------------------------------------------------------------
-# Etapa 1: Builder (Instalación de dependencias de PHP y Laravel)
-# Usamos PHP 8.2 para asegurar la compatibilidad con repositorios modernos (Bullseye).
+# Etapa 1: Builder (Instalación de dependencias de Composer)
+# Usamos PHP 8.2-FPM-Alpine para la compilación, base más estable y ligera.
 # ----------------------------------------------------------------------
-FROM php:8.2-fpm-buster as builder
+FROM php:8.2-fpm-alpine as builder
 
 # Definir argumentos de compilación y entorno
 ARG UID=1000
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Instalar dependencias del sistema, herramientas y extensiones de PHP
-# FIX: Limpiamos la caché de apt antes de la actualización para resolver errores 100.
-RUN rm -rf /var/lib/apt/lists/* && apt-get clean && apt-get update && apt-get install -y \
+# Instalar dependencias del sistema y extensiones de PHP (Alpine usa 'apk')
+RUN apk update && apk add --no-cache \
     git \
     unzip \
-    libpng-dev \
     libxml2-dev \
-    libonig-dev \
-    libzip-dev \
+    libpng-dev \
+    libpq \
     libpq-dev \
-    # Compilar extensiones de PHP necesarias
-    && docker-php-ext-install pdo pdo_pgsql mbstring exif pcntl bcmath gd zip \
-    # Limpiar caché y archivos temporales
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/*
+    # Instalar extensiones con el instalador de Docker
+    && docker-php-ext-install pdo_pgsql pdo_mysql opcache \
+    # Extensiones que requieren compilación manual en Alpine
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install gd \
+    && apk del libpng-dev libxml2-dev
 
 # Instalar Composer globalmente
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Crear usuario de aplicación 'appuser' (recomendado para seguridad)
-RUN useradd -u $UID -ms /bin/bash appuser
+# El ID 1000 es estándar, y el usuario 'www-data' ya existe.
+RUN addgroup -g 1000 appuser && adduser -u $UID -G appuser -s /bin/sh -D appuser
 WORKDIR /var/www
 
-# Copiar el código fuente y establecer permisos
+# Copiar el código fuente
 COPY . /var/www
 RUN chown -R appuser:appuser /var/www
 
@@ -45,21 +46,15 @@ RUN php artisan cache:clear
 
 # ----------------------------------------------------------------------
 # Etapa 2: Final (Imagen de producción con Nginx y PHP-FPM)
-# Usamos la misma base PHP 8.2.
+# Usamos la misma base Alpine.
 # ----------------------------------------------------------------------
-FROM php:8.2-fpm-buster
+FROM php:8.2-fpm-alpine
 
-# Instalar Nginx y procps. 
-# FIX: Limpieza agresiva de caché y actualización forzada para evitar el error 100.
-RUN rm -rf /var/lib/apt/lists/* && apt-get clean && apt-get update && apt-get install -y \
-    nginx \
-    procps \
-    # Eliminar la configuración default de Nginx para usar la nuestra
-    && rm -f /etc/nginx/sites-enabled/default \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/*
+# Instalar Nginx (Alpine usa 'apk' que es más robusto contra fallos de red)
+RUN apk update && apk add --no-cache nginx procps
 
 # Copiar el código de la aplicación (con vendor ya instalado)
-# Se establece el usuario 'www-data' (estándar de Nginx/PHP) como propietario
+# El usuario 'www-data' ya existe en esta base
 COPY --from=builder --chown=www-data:www-data /var/www /var/www
 
 # Configurar directorios de cache/storage de Laravel y socket de PHP-FPM
