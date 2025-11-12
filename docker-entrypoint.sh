@@ -1,43 +1,43 @@
-#!/bin/sh
-set -e
+#!/bin/bash
 
-# --- 1. PREPARACIÓN DE LARAVEL EN RUNTIME ---
+# Este script se ejecuta al inicio del contenedor (ENTRYPOINT)
+
+# Cambiar al directorio de la aplicación, esto es VITAL para que 'cp' y 'php artisan' funcionen
+cd /var/www/html || { echo "Error: No se pudo cambiar al directorio /var/www/html"; exit 1; }
+
 echo "Ejecutando Laravel Artisan comandos en runtime..."
 
-# 1. Copiar .env si no existe (Crucial para que Laravel inicie)
+# 1. Copiar .env.example a .env si no existe
 if [ ! -f .env ]; then
     echo "Copiando .env.example a .env"
     cp .env.example .env
 fi
 
-# 2. Generar APP_KEY si no está definida
-if ! grep -q "^APP_KEY=base64:" .env; then
+# 2. Generar la clave de la aplicación si no existe
+# Esto es necesario incluso si ya tienes una clave definida en el .env, para asegurar
+# que Laravel la reconozca.
+if [ -z "$APP_KEY" ]; then
     echo "Generando APP_KEY..."
-    # Ejecutamos key:generate. Esto también actualiza el .env
-    php /var/www/artisan key:generate
+    php artisan key:generate
 fi
 
-# 3. Limpiar y cachear configuración
-echo "Limpiando y cacheando la configuración..."
+# 3. Borrar cachés de configuración y vistas (prevención de errores de caché viejos)
+echo "Limpiando cachés de Laravel..."
+php artisan config:clear
+php artisan view:clear
 
-# Ajustar permisos antes de escribir la caché (www-data es el usuario de PHP-FPM)
-chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
+# 4. Optimizar el framework para producción
+echo "Cacheando configuración y rutas..."
+php artisan config:cache
+php artisan route:cache
 
-php /var/www/artisan config:clear
-php /var/www/artisan cache:clear
-php /var/www/artisan config:cache
-php /var/www/artisan route:cache
+# 5. Ejecutar migraciones
+# Solo se ejecuta si la variable de entorno DB_CONNECTION tiene algún valor.
+if [ -n "$DB_CONNECTION" ]; then
+    echo "Ejecutando migraciones..."
+    php artisan migrate --force
+fi
 
-# 4. Ejecutar migraciones (Necesario para la base de datos)
-echo "Ejecutando migraciones..."
-php /var/www/artisan migrate --force
-
-# --- 2. INICIO DE SERVICIOS ---
-
-# Iniciar PHP-FPM en segundo plano (usamos el ejecutable simple 'php-fpm')
-echo "Iniciando PHP-FPM..."
-php-fpm -D
-
-# Iniciar Nginx en primer plano
-echo "Iniciando Nginx..."
-exec nginx -g "daemon off;"
+# Ejecutar el comando principal del contenedor (CMD)
+# Esto es lo que inicia Supervisor, que a su vez ejecuta Nginx y PHP-FPM
+exec "$@"

@@ -1,76 +1,76 @@
-# ----------------------------------------------------------------------
-# Etapa 1: Builder (Instalación de dependencias de Composer y compilación)
-# SOLO INSTALACIÓN, SIN COMANDOS DE LARAVEL.
-# ----------------------------------------------------------------------
-FROM php:8.2-fpm-alpine as builder
+# -------------------------------------------------------------------------
+# ETAPA 1: BUILDER - Configuración de Node.js y PHP para la compilación
+# -------------------------------------------------------------------------
+FROM node:20.10-alpine as node_builder
 
-# Definir argumentos de compilación y entorno
-ARG UID=1000
-ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /app
 
-# Instalar dependencias del sistema y extensiones de PHP (Alpine usa 'apk')
-RUN apk update && apk add --no-cache \
-    git \
-    unzip \
-    libxml2 \
-    libpng \
-    libpq \
-    freetype \
-    libjpeg \
-    freetype-dev \
-    libjpeg-turbo-dev \
-    libpng-dev \
-    libxml2-dev \
-    libpq-dev \
-    # Compilar y habilitar extensiones de PHP
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) pdo pdo_pgsql pdo_mysql opcache gd \
-    # Limpieza: Eliminamos las dependencias de desarrollo/compilación
-    && apk del --no-cache freetype-dev libjpeg-turbo-dev libpng-dev libxml2-dev libpq-dev
+# Instalar dependencias del frontend si usas NPM/Yarn para assets
+# COMENTAR O ELIMINAR ESTAS LÍNEAS SI NO USAS FRONTEND (Blade simple/Sin Vite)
+# COPY package.json package-lock.json ./
+# RUN npm install
+# COPY . .
+# RUN npm run build
 
-# Instalar Composer globalmente
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-# Crear usuario de aplicación 'appuser'
-RUN addgroup -g 1000 appuser && adduser -u $UID -G appuser -s /bin/sh -D appuser
-WORKDIR /var/www
-
-# Copiar el código fuente y establecer permisos
-COPY . /var/www
-RUN chown -R appuser:appuser /var/www
-
-# Instalar dependencias de Laravel (como usuario no root)
-USER appuser
-RUN composer install --no-dev --prefer-dist --optimize-autoloader
-
-# FIX DE PERMISOS: Aseguramos que 'storage' tenga permisos
-RUN mkdir -p /var/www/storage/framework/cache \
-    && chown -R appuser:appuser /var/www/storage
-
-# ----------------------------------------------------------------------
-# Etapa 2: Final (Imagen de producción con Nginx y PHP-FPM)
-# ----------------------------------------------------------------------
+# -------------------------------------------------------------------------
+# ETAPA 2: PRODUCTION - Imagen base final con PHP y Nginx
+# -------------------------------------------------------------------------
+# Usar la imagen oficial de PHP FPM (FastCGI Process Manager)
 FROM php:8.2-fpm-alpine
 
-# Instalar Nginx y procps
-RUN apk update && apk add --no-cache nginx procps
+# Instalar dependencias del sistema requeridas para Laravel/PHP
+RUN apk update && apk add \
+    nginx \
+    git \
+    supervisor \
+    openssl \
+    bash \
+    # Dependencias PHP requeridas:
+    icu-dev \
+    libzip-dev \
+    libpng-dev \
+    jpeg-dev \
+    libjpeg-turbo-dev \
+    postgresql-dev \
+    onig \
+    && rm -rf /var/cache/apk/*
 
-# Copiar el código de la aplicación
-COPY --from=builder --chown=www-data:www-data /var/www /var/www
+# Instalar extensiones PHP
+RUN docker-php-ext-install pdo pdo_mysql opcache zip bcmath exif gd intl
 
-# Configurar directorios finales de Laravel y socket de PHP-FPM
-RUN mkdir -p /run/php \
-    && chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
+# Instalar Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copiar la configuración de Nginx 
-COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+# Configurar el directorio de trabajo
+WORKDIR /var/www/html
 
-# Copiar y dar permisos de ejecución al script de entrada 
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# Copiar el código de la aplicación (incluyendo .env.example)
+COPY . .
+
+# Corregir permisos de almacenamiento para Laravel (storage, bootstrap/cache)
+# Es vital que el usuario 'www-data' (el usuario de PHP-FPM) pueda escribir aquí
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 775 /var/www/html/storage \
+    && chmod -R 775 /var/www/html/bootstrap/cache
+
+# Instalar dependencias de PHP
+RUN composer install --no-dev --optimize-autoloader
+
+# Copiar la configuración personalizada de Nginx
+COPY ./docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+
+# Copiar la configuración de Supervisor (para correr FPM y Nginx juntos)
+COPY ./docker/supervisor/supervisord.conf /etc/supervisord.conf
+
+# Copiar el script de entrada (Entrypoint Script)
+COPY ./docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Puerto de Nginx
-EXPOSE 80
+# Exponer el puerto de Nginx
+EXPOSE 8000
 
-# Usar el script de entrada que inicia ambos servicios
+# Usar el entrypoint script
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
+# Comando por defecto para iniciar Supervisor (que a su vez inicia Nginx y PHP-FPM)
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
