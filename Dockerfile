@@ -1,76 +1,83 @@
-# -------------------------------------------------------------------------
-# ETAPA 1: BUILDER - Configuración de Node.js y PHP para la compilación
-# -------------------------------------------------------------------------
-FROM node:20.10-alpine as node_builder
+# -----------------------------------------------------------
+# Etapa 1: Build/Base - Configura el entorno de PHP
+# -----------------------------------------------------------
+FROM php:8.2-fpm-alpine AS base
 
-WORKDIR /app
+# Definir variables de entorno para el entorno de producción
+ENV APP_ENV=production
+ENV PATH="./vendor/bin:$PATH"
 
-# Instalar dependencias del frontend si usas NPM/Yarn para assets
-# COMENTAR O ELIMINAR ESTAS LÍNEAS SI NO USAS FRONTEND (Blade simple/Sin Vite)
-# COPY package.json package-lock.json ./
-# RUN npm install
-# COPY . .
-# RUN npm run build
-
-# -------------------------------------------------------------------------
-# ETAPA 2: PRODUCTION - Imagen base final con PHP y Nginx
-# -------------------------------------------------------------------------
-# Usar la imagen oficial de PHP FPM (FastCGI Process Manager)
-FROM php:8.2-fpm-alpine
-
-# Instalar dependencias del sistema requeridas para Laravel/PHP
-RUN apk update && apk add \
+# Instalar dependencias del sistema necesarias
+# Incluye paquetes necesarios para PHP, compilación (g++, make), y servicios (nginx, supervisor)
+RUN apk update && apk add --no-cache \
     nginx \
-    git \
     supervisor \
-    openssl \
-    bash \
-    # Dependencias PHP requeridas:
-    icu-dev \
+    git \
+    curl \
+    g++ \
+    make \
+    autoconf \
     libzip-dev \
+    sqlite-dev \
     libpng-dev \
-    jpeg-dev \
-    libjpeg-turbo-dev \
-    postgresql-dev \
-    onig \
+    oniguruma-dev \
+    libxml2-dev \
+    icu-dev \
+    pcre-dev \
     && rm -rf /var/cache/apk/*
 
-# Instalar extensiones PHP
-RUN docker-php-ext-install pdo pdo_mysql opcache zip bcmath exif gd intl
+# Instalar y habilitar extensiones de PHP comunes para Laravel
+RUN docker-php-ext-install -j$(nproc) \
+    pdo_mysql \
+    zip \
+    gd \
+    mbstring \
+    exif \
+    pcntl \
+    bcmath \
+    intl \
+    opcache
 
-# Instalar Composer
+# Instalar Composer globalmente
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Configurar el directorio de trabajo
+# -----------------------------------------------------------
+# Etapa 2: Producción - Configuración de la aplicación y servicios
+# -----------------------------------------------------------
+FROM base AS final
+
+# Establecer el directorio de trabajo para la aplicación
 WORKDIR /var/www/html
 
-# Copiar el código de la aplicación (incluyendo .env.example)
-COPY . .
+# Copiar el código de la aplicación desde el contexto de build
+COPY . /var/www/html
 
-# Corregir permisos de almacenamiento para Laravel (storage, bootstrap/cache)
-# Es vital que el usuario 'www-data' (el usuario de PHP-FPM) pueda escribir aquí
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 /var/www/html/storage \
-    && chmod -R 775 /var/www/html/bootstrap/cache
-
-# Instalar dependencias de PHP
+# Instalar dependencias de Laravel sin archivos de desarrollo
 RUN composer install --no-dev --optimize-autoloader
 
-# Copiar la configuración personalizada de Nginx
-COPY ./docker/nginx/default.conf /etc/nginx/conf.d/default.conf
-
-# Copiar la configuración de Supervisor (para correr FPM y Nginx juntos)
-COPY ./docker/supervisor/supervisord.conf /etc/supervisord.conf
-
-# Copiar el script de entrada (Entrypoint Script)
-COPY ./docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Limpiar cache y configurar permisos de Laravel
+# 'www-data' es el usuario que usa PHP-FPM en Alpine
+RUN php artisan optimize:clear \
+    && chmod -R 775 storage bootstrap/cache \
+    && chown -R www-data:www-data /var/www/html
 
 # Exponer el puerto de Nginx
 EXPOSE 8000
 
-# Usar el entrypoint script
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# --- COPIAR ARCHIVOS DE CONFIGURACIÓN (RUTAS CORREGIDAS DENTRO DE ./.docker/) ---
 
-# Comando por defecto para iniciar Supervisor (que a su vez inicia Nginx y PHP-FPM)
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+# Copia de la configuración de Nginx al directorio de configuración
+COPY ./.docker/NGINX/default.conf /etc/nginx/conf.d/default.conf
+
+# Copia de la configuración de PHP-FPM (pool) al directorio de PHP-FPM
+COPY ./.docker/PHP-FPM/php-fpm.conf /usr/local/etc/php-fpm.d/www.conf
+
+# Copia de la configuración de Supervisor al directorio raíz de configuración
+COPY ./.docker/supervisor/supervisord.conf /etc/supervisord.conf
+
+# Copiar y dar permisos de ejecución al script de entrada (Entrypoint Script)
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# El contenedor inicia ejecutando el entrypoint, que a su vez inicia Supervisor
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
