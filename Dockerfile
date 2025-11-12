@@ -1,79 +1,61 @@
-# -----------------------------------------------------------
-# Etapa 1: Build/Base - Configura el entorno de PHP
-# -----------------------------------------------------------
-FROM php:8.2-fpm-alpine AS base
+FROM php:8.2-fpm-alpine
 
-# Definir variables de entorno para el entorno de producción
-ENV APP_ENV=production
-ENV PATH="./vendor/bin:$PATH"
+# Argumentos de compilación para la versión de la aplicación
+ARG APP_VERSION
 
-# Instalar dependencias del sistema necesarias
-# Incluye paquetes necesarios para PHP, compilación (g++, make), y servicios (nginx, supervisor)
+# 1. Instalar dependencias del sistema y extensiones de PHP
 RUN apk update && apk add --no-cache \
     nginx \
     supervisor \
-    git \
+    bash \
     curl \
-    g++ \
-    make \
-    autoconf \
-    libzip-dev \
-    sqlite-dev \
-    libpng-dev \
-    oniguruma-dev \
+    git \
+    build-base \
     libxml2-dev \
-    icu-dev \
-    pcre-dev \
-    && rm -rf /var/cache/apk/*
+    sqlite-dev \
+    libzip-dev \
+    oniguruma-dev \
+    autoconf \
+    mysql-client \
+    imagemagick-dev
 
-# Instalar y habilitar extensiones de PHP comunes para Laravel
-RUN docker-php-ext-install -j$(nproc) \
-    pdo_mysql \
-    zip \
-    gd \
-    mbstring \
-    exif \
-    pcntl \
-    bcmath \
-    intl \
-    opcache
+# Instalar extensiones PHP requeridas por Laravel y composer
+RUN docker-php-ext-install pdo_mysql opcache bcmath exif \
+    && docker-php-ext-configure zip --with-libzip \
+    && docker-php-ext-install zip
 
-# Instalar Composer globalmente
+# Instalar Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-# -----------------------------------------------------------
-# Etapa 2: Producción - Configuración de la aplicación y servicios
-# -----------------------------------------------------------
-FROM base AS final
 
-# Establecer el directorio de trabajo para la aplicación
+# 2. Configurar el usuario y directorio de trabajo
 WORKDIR /var/www/html
 
-# Copiar el código de la aplicación desde el contexto de build
-COPY . /var/www/html
+# 3. Copiar la aplicación
+# Copiar archivos de configuración de Docker (nginx, supervisor, entrypoint)
+COPY .docker/supervisord.conf /etc/supervisord.conf
+COPY .docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY .docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-# Instalar dependencias de Laravel sin archivos de desarrollo
-RUN composer install --no-dev --optimize-autoloader
-# Configurar permisos de Laravel (ya no incluye artisan optimize:clear)
-# 'www-data' es el usuario que usa PHP-FPM en Alpine
-RUN chmod -R 775 storage bootstrap/cache \
-    && chown -R www-data:www-data /var/www/html
-
-# Exponer el puerto de Nginx
-EXPOSE 8000
-# --- COPIAR ARCHIVOS DE CONFIGURACIÓN (RUTAS CORREGIDAS A MINÚSCULAS) ---
-
-# CORRECCIÓN: Nginx en minúsculas (basado en la estructura final del usuario)
-COPY ./.docker/nginx/default.conf /etc/nginx/conf.d/default.conf
-
-# CORRECCIÓN: PHP-FPM en minúsculas (basado en la estructura final del usuario)
-COPY ./.docker/php-fpm/php-fpm.conf /usr/local/etc/php-fpm.d/www.conf
-
-# CORRECCIÓN: Supervisord está en la raíz del proyecto (basado en la estructura final del usuario)
-COPY supervisord.conf /etc/supervisord.conf
-
-# Copiar y dar permisos de ejecución al script de entrada (Entrypoint Script)
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# Dar permisos de ejecución al script de entrada
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# El contenedor inicia ejecutando el entrypoint, que a su vez inicia Supervisor
+# Copiar el código de la aplicación
+COPY . .
+
+# 4. Instalar dependencias de PHP
+RUN composer install --no-dev --prefer-dist --optimize-autoloader
+
+# 5. Configuración de Nginx y Permisos: Crear logs, configurar el usuario, y limpiar.
+RUN mkdir -p /var/www/html/public \
+    && adduser -D -g 'www-data' www-data \
+    && chown -R www-data:www-data /var/www/html \
+    && chown -R www-data:www-data /var/lib/nginx
+
+# Exponer el puerto de Nginx (80)
+EXPOSE 80
+
+# 6. Definir el punto de entrada (Ejecuta el script de setup)
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
+# 7. Comando principal (Inicia Supervisor, que a su vez inicia Nginx y PHP-FPM)
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
