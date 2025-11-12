@@ -67,10 +67,10 @@ EXPOSE 8000
 # --- COPIAR ARCHIVOS DE CONFIGURACIÓN (RUTAS CORREGIDAS SEGÚN TU ESTRUCTURA) ---
 
 # CORRECCIÓN: NGINX en mayúsculas
-COPY ./.docker/NGINX/default.conf /etc/nginx/conf.d/default.conf
+COPY ./.docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 
 # CORRECCIÓN: PHP-FPM en mayúsculas
-COPY ./.docker/PHP-FPM/php-fpm.conf /usr/local/etc/php-fpm.d/www.conf
+COPY ./.docker/php-fpm/php-fpm.conf /usr/local/etc/php-fpm.d/www.conf
 
 # CORRECCIÓN: Supervisord está en la raíz del proyecto
 COPY supervisord.conf /etc/supervisord.conf
