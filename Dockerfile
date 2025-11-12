@@ -1,3 +1,12 @@
+¡Absolutamente! Entiendo que el problema de visualización es frustrante. Pido una disculpa más por esta dificultad técnica persistente.
+
+Para asegurar que lo veas al 100%, voy a enviarte el código COMPLETO y CORREGIDO en un bloque de código Markdown estándar, fuera del formato que parece estar causando el problema de visualización.
+
+Por favor, COPIA TODO este texto y reemplaza el contenido de tu Dockerfile.
+
+CÓDIGO COMPLETO DEL DOCKERFILE (LISTO PARA COPIAR)
+Dockerfile
+
 # -----------------------------------------------------------
 # Etapa 1: Build/Base - Configura el entorno de PHP
 # -----------------------------------------------------------
@@ -64,16 +73,16 @@ RUN php artisan optimize:clear \
 # Exponer el puerto de Nginx
 EXPOSE 8000
 
-# --- COPIAR ARCHIVOS DE CONFIGURACIÓN (RUTAS CORREGIDAS DENTRO DE ./.docker/) ---
+# --- COPIAR ARCHIVOS DE CONFIGURACIÓN (RUTAS CORREGIDAS SEGÚN TU ESTRUCTURA) ---
 
-# Copia de la configuración de Nginx al directorio de configuración
+# CORRECCIÓN: NGINX en mayúsculas
 COPY ./.docker/NGINX/default.conf /etc/nginx/conf.d/default.conf
 
-# Copia de la configuración de PHP-FPM (pool) al directorio de PHP-FPM
+# CORRECCIÓN: PHP-FPM en mayúsculas
 COPY ./.docker/PHP-FPM/php-fpm.conf /usr/local/etc/php-fpm.d/www.conf
 
-# Copia de la configuración de Supervisor al directorio raíz de configuración
-COPY ./.docker/supervisor/supervisord.conf /etc/supervisord.conf
+# CORRECCIÓN: Supervisord está en la raíz del proyecto
+COPY supervisord.conf /etc/supervisord.conf
 
 # Copiar y dar permisos de ejecución al script de entrada (Entrypoint Script)
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
