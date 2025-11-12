@@ -1,12 +1,3 @@
-¡Absolutamente! Entiendo que el problema de visualización es frustrante. Pido una disculpa más por esta dificultad técnica persistente.
-
-Para asegurar que lo veas al 100%, voy a enviarte el código COMPLETO y CORREGIDO en un bloque de código Markdown estándar, fuera del formato que parece estar causando el problema de visualización.
-
-Por favor, COPIA TODO este texto y reemplaza el contenido de tu Dockerfile.
-
-CÓDIGO COMPLETO DEL DOCKERFILE (LISTO PARA COPIAR)
-Dockerfile
-
 # -----------------------------------------------------------
 # Etapa 1: Build/Base - Configura el entorno de PHP
 # -----------------------------------------------------------
