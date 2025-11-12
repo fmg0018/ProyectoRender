@@ -40,7 +40,6 @@ RUN docker-php-ext-install -j$(nproc) \
 
 # Instalar Composer globalmente
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
 # -----------------------------------------------------------
 # Etapa 2: Producción - Configuración de la aplicación y servicios
 # -----------------------------------------------------------
@@ -54,25 +53,22 @@ COPY . /var/www/html
 
 # Instalar dependencias de Laravel sin archivos de desarrollo
 RUN composer install --no-dev --optimize-autoloader
-
-# Limpiar cache y configurar permisos de Laravel
+# Configurar permisos de Laravel (ya no incluye artisan optimize:clear)
 # 'www-data' es el usuario que usa PHP-FPM en Alpine
-RUN php artisan optimize:clear \
-    && chmod -R 775 storage bootstrap/cache \
+RUN chmod -R 775 storage bootstrap/cache \
     && chown -R www-data:www-data /var/www/html
 
 # Exponer el puerto de Nginx
 EXPOSE 8000
+# --- COPIAR ARCHIVOS DE CONFIGURACIÓN (RUTAS CORREGIDAS A MINÚSCULAS) ---
 
-# --- COPIAR ARCHIVOS DE CONFIGURACIÓN (RUTAS CORREGIDAS SEGÚN TU ESTRUCTURA) ---
-
-# CORRECCIÓN: NGINX en mayúsculas
+# CORRECCIÓN: Nginx en minúsculas (basado en la estructura final del usuario)
 COPY ./.docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 
-# CORRECCIÓN: PHP-FPM en mayúsculas
+# CORRECCIÓN: PHP-FPM en minúsculas (basado en la estructura final del usuario)
 COPY ./.docker/php-fpm/php-fpm.conf /usr/local/etc/php-fpm.d/www.conf
 
-# CORRECCIÓN: Supervisord está en la raíz del proyecto
+# CORRECCIÓN: Supervisord está en la raíz del proyecto (basado en la estructura final del usuario)
 COPY supervisord.conf /etc/supervisord.conf
 
 # Copiar y dar permisos de ejecución al script de entrada (Entrypoint Script)
