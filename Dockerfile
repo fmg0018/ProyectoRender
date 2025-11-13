@@ -15,6 +15,7 @@ RUN apk add --no-cache \
     sqlite-dev \
     libxml2-dev \
     libzip-dev \
+    linux-headers \
     && docker-php-ext-install pdo_sqlite pdo_mysql zip opcache sockets \
     && docker-php-ext-enable opcache \
     && rm -rf /var/cache/apk/*
@@ -25,15 +26,11 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Directorio de trabajo
 WORKDIR /var/www/html
 
-# Copiar el código de la aplicación (solo si es necesario para composer)
-# Las dependencias de producción ya se descargan localmente antes del build.
-# COPY . .
-
 # Instalar dependencias de PHP (si no están ya en el .gitignored)
 # RUN composer install --no-dev --prefer-dist --optimize-autoloader
 
 # Seccion 4: Archivos de configuracion de Nginx/PHP-FPM/Supervisor
-# CORRECCIÓN: Copiar el Nginx global minimalista (para corregir el fallo del PID y el usuario global)
+# Copiar el Nginx global minimalista (para corregir el fallo del PID y el usuario global)
 COPY .docker/nginx/nginx.conf /etc/nginx/nginx.conf
 
 # Copiar la configuración específica de la app (corregida con 0.0.0.0:80 y www-data)
