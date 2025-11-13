@@ -39,7 +39,6 @@ COPY .docker/php-fpm/php-fpm.conf /usr/local/etc/php-fpm.conf
 COPY .docker/supervisord.conf /etc/supervisord.conf
 
 # SECCIÓN 5: PERMISOS (Se ejecuta en el build)
-# Los permisos y la creación de directorios se hacen directamente aquí.
 RUN mkdir -p /var/www/html/public \
     && mkdir -p /var/log/nginx \
     && mkdir -p /var/log/supervisor \
@@ -50,6 +49,5 @@ RUN mkdir -p /var/www/html/public \
 # Exponer el puerto
 EXPOSE 80
 
-# COMANDO DE INICIO FINAL: Ejecutar Supervisor directamente
-# Esto elimina el conflicto de entrypoint.
-CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisord.conf"]
+# COMANDO DE INICIO DEPURACION: Comprueba la sintaxis de Nginx y luego el contenedor muere.
+CMD ["/usr/sbin/nginx", "-t"]
