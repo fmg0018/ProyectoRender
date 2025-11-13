@@ -1,3 +1,4 @@
+# Usa la imagen base oficial de PHP 8.2 con FPM en Alpine
 FROM php:8.2-fpm-alpine
 
 # Argumentos de compilación para la versión de la aplicación
@@ -5,41 +6,58 @@ ARG APP_VERSION
 
 # 1. Instalar dependencias del sistema y extensiones de PHP
 RUN apk update && apk add --no-cache \
+    # Gestores de servicio y utilidades
     nginx \
     supervisor \
     bash \
     curl \
     git \
+    # Dependencias de compilación para las extensiones de PHP
     build-base \
+    autoconf \
+    # Dependencias de extensiones de PHP:
     libxml2-dev \
     sqlite-dev \
-    libzip-dev \
-    oniguruma-dev \
-    autoconf \
+    # Dependencia para pdo_mysql (musl-dev es esencial en Alpine)
     mysql-client \
-    imagemagick-dev
+    mysql-dev \
+    # Dependencia para zip
+    libzip-dev \
+    # Dependencia para exif
+    libexif-dev \
+    # Dependencia para bcmath, tokenizer
+    oniguruma-dev \
+    # Dependencia para la extensión gd (si se necesita, para imagen)
+    imagemagick-dev \
+    # Asegurar que se limpia la caché de apk para reducir el tamaño
+    && rm -rf /var/cache/apk/*
 
 # Instalar extensiones PHP requeridas por Laravel y composer
+# Usamos docker-php-ext-install para las extensiones, configurando 'zip' y 'gd'
 RUN docker-php-ext-install pdo_mysql opcache bcmath exif \
     && docker-php-ext-configure zip --with-libzip \
-    && docker-php-ext-install zip
+    && docker-php-ext-install zip \
+    # Instalar GD si necesitas manipulación de imágenes
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install gd
+
+# Limpieza adicional de paquetes de compilación después de instalar las extensiones
+RUN apk del --purge build-base autoconf mysql-dev libexif-dev libzip-dev oniguruma-dev imagemagick-dev
 
 # Instalar Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # 2. Configurar el usuario y directorio de trabajo
+# Crear un usuario 'www-data' (estándar de Apache/Nginx/PHP)
+RUN adduser -D -g 'www-data' www-data
+
 WORKDIR /var/www/html
 
 # 3. Copiar la aplicación
 # Copiar archivos de configuración de Docker (nginx, supervisor, entrypoint)
-
-# ASUMIENDO que supervisord.conf está directamente en .docker/
-COPY supervisord.conf /etc/supervisord.conf
-
-# LÍNEA CORREGIDA: Apunta a la subcarpeta 'nginx'
+# NOTA: Asegúrate de que supervisord.conf, .docker/nginx/default.conf, y .docker/docker-entrypoint.sh existan
+COPY .docker/supervisord.conf /etc/supervisord.conf
 COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
-
-# El entrypoint está bien
 COPY .docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Dar permisos de ejecución al script de entrada
@@ -53,7 +71,6 @@ RUN composer install --no-dev --prefer-dist --optimize-autoloader
 
 # 5. Configuración de Nginx y Permisos: Crear logs, configurar el usuario, y limpiar.
 RUN mkdir -p /var/www/html/public \
-    && adduser -D -g 'www-data' www-data \
     && chown -R www-data:www-data /var/www/html \
     && chown -R www-data:www-data /var/lib/nginx
 
