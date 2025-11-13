@@ -52,4 +52,4 @@ EXPOSE 80
 
 # COMANDO DE INICIO FINAL: Ejecutar Supervisor directamente
 # Esto elimina el conflicto de entrypoint.
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisord.conf"]
