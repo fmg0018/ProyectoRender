@@ -32,13 +32,13 @@ WORKDIR /var/www/html
 # Copiar el Nginx global minimalista (para corregir el fallo del PID y el usuario global)
 COPY .docker/nginx/nginx.conf /etc/nginx/nginx.conf
 
-# Copiar la configuración específica de la app (corregida con 0.0.0.0:80 y www-data)
+# Copiar la configuración específica de la app (corregida con 0.0.0.0:80 y sin 'user')
 COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 
 COPY .docker/php-fpm/php-fpm.conf /usr/local/etc/php-fpm.conf
 COPY .docker/supervisord.conf /etc/supervisord.conf
 
-# SECCIÓN 5: PERMISOS (Se ejecuta en el build)
+# SECCIÓN 5: PERMISOS
 RUN mkdir -p /var/www/html/public \
     && mkdir -p /var/log/nginx \
     && mkdir -p /var/log/supervisor \
@@ -49,5 +49,5 @@ RUN mkdir -p /var/www/html/public \
 # Exponer el puerto
 EXPOSE 80
 
-# COMANDO DE INICIO DEPURACION: Comprueba la sintaxis de Nginx y luego el contenedor muere.
-CMD ["/usr/sbin/nginx", "-t"]
+# COMANDO DE INICIO FINAL: Ejecutar Supervisor en modo foreground (-n)
+CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisord.conf"]
