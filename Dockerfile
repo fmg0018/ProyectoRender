@@ -5,9 +5,9 @@ FROM php:8.2-fpm-alpine
 ARG APP_ENV=production
 
 # Seccion 2: Dependencias del sistema y de PHP (Laravel)
+# Supervisor ha sido ELIMINADO.
 RUN apk add --no-cache \
     git \
-    supervisor \
     nginx \
     curl \
     oniguruma-dev \
@@ -28,18 +28,19 @@ WORKDIR /var/www/html
 # Instalar dependencias de PHP (si no están ya en el .gitignored)
 # RUN composer install --no-dev --prefer-dist --optimize-autoloader
 
-# Seccion 4: Archivos de configuracion de Nginx/PHP-FPM/Supervisor
-# Copiar el Nginx global minimalista (corrige PID y usa user www-data)
+# Seccion 4: Archivos de configuracion de Nginx/PHP-FPM
+# Copia la configuracion global de Nginx (corregida)
 COPY .docker/nginx/nginx.conf /etc/nginx/nginx.conf
-
-# Copiar la configuración específica de la app (corregida: sin 'user' y con logging)
+# Copia la configuracion de la app (corregida)
 COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
-
+# Copia la configuracion de PHP-FPM
 COPY .docker/php-fpm/php-fpm.conf /usr/local/etc/php-fpm.conf
-COPY .docker/supervisord.conf /etc/supervisord.conf
 
-# SECCIÓN 5: PERMISOS
-# Asegura que el usuario www-data tiene permisos de escritura
+# SECCION 5: ENTRYPOINT (EL NUEVO GESTOR DE INICIO)
+COPY .docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# SECCIÓN 6: PERMISOS
 RUN mkdir -p /var/www/html/public \
     && mkdir -p /var/log/nginx \
     && mkdir -p /var/log/supervisor \
@@ -50,6 +51,5 @@ RUN mkdir -p /var/www/html/public \
 # Exponer el puerto
 EXPOSE 80
 
-# COMANDO DE INICIO FINAL: Ejecutar Supervisor en modo foreground (-n)
-# Esto mantiene el contenedor vivo.
-CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisord.conf"]
+# COMANDO DE INICIO FINAL: Ejecuta el script customizado
+CMD ["/usr/local/bin/docker-entrypoint.sh"]
