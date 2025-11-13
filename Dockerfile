@@ -1,4 +1,3 @@
-
 # Seccion 1: PHP-FPM como base
 FROM php:8.2-fpm-alpine
 
@@ -39,11 +38,8 @@ COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY .docker/php-fpm/php-fpm.conf /usr/local/etc/php-fpm.conf
 COPY .docker/supervisord.conf /etc/supervisord.conf
 
-# Seccion 5: Entrypoint y permisos
-COPY .docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-# Permisos para Nginx/PHP-FPM y log
+# SECCIÓN 5: PERMISOS (Se ejecuta en el build)
+# Los permisos y la creación de directorios se hacen directamente aquí.
 RUN mkdir -p /var/www/html/public \
     && mkdir -p /var/log/nginx \
     && mkdir -p /var/log/supervisor \
@@ -51,8 +47,9 @@ RUN mkdir -p /var/www/html/public \
     && chown -R www-data:www-data /var/lib/nginx \
     && chown -R www-data:www-data /var/log
 
-# Exponer el puerto (principalmente informativo, ya que Nginx escucha en 80)
+# Exponer el puerto
 EXPOSE 80
 
-# Comando de inicio del contenedor
-CMD ["/usr/local/bin/docker-entrypoint.sh"]
+# COMANDO DE INICIO FINAL: Ejecutar Supervisor directamente
+# Esto elimina el conflicto de entrypoint.
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
