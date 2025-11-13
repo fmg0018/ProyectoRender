@@ -1,4 +1,3 @@
-
 # ----------------------------------------------------
 # 1. ETAPA BASE: Instalación de PHP, Nginx, Supervisor y dependencias
 # ----------------------------------------------------
@@ -66,7 +65,7 @@ RUN npm run build
 
 # Copiar archivos de configuración
 COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
-COPY .docker/nginx/nginx.conf /etc/nginx/nginx.conf
+# LÍNEA ELIMINADA: La configuración principal de Nginx predeterminada es más estable en Alpine.
 COPY .docker/supervisord.conf /etc/supervisord.conf
 COPY .docker/php-fpm/php-fpm.conf /usr/local/etc/php-fpm.conf
 
