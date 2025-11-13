@@ -18,47 +18,49 @@ RUN apk update && apk add --no-cache \
     # Dependencias de extensiones de PHP:
     libxml2-dev \
     sqlite-dev \
-    # Dependencia para pdo_mysql (musl-dev es esencial en Alpine)
     mysql-client \
     mysql-dev \
-    # Dependencia para zip
     libzip-dev \
-    # Dependencia para exif
     libexif-dev \
-    # Dependencia para bcmath, tokenizer
     oniguruma-dev \
-    # Dependencia para la extensión gd (si se necesita, para imagen)
     imagemagick-dev \
-    # Asegurar que se limpia la caché de apk para reducir el tamaño
+    # Dependencias para GD (instalación de PHP después)
+    libjpeg-turbo-dev \
+    libpng-dev \
+    freetype-dev \
+    # Limpieza de caché
     && rm -rf /var/cache/apk/*
 
-# Instalar extensiones PHP requeridas por Laravel y composer
-# Usamos docker-php-ext-install para las extensiones, configurando 'zip' y 'gd'
+# Instalar extensiones PHP requeridas por Laravel y Composer
 RUN docker-php-ext-install pdo_mysql opcache bcmath exif \
     && docker-php-ext-configure zip --with-libzip \
     && docker-php-ext-install zip \
-    # Instalar GD si necesitas manipulación de imágenes
+    # Configurar e instalar GD (Muy común en Laravel)
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install gd
 
-# Limpieza adicional de paquetes de compilación después de instalar las extensiones
-RUN apk del --purge build-base autoconf mysql-dev libexif-dev libzip-dev oniguruma-dev imagemagick-dev
+# Limpieza adicional de paquetes de compilación para reducir el tamaño de la imagen
+RUN apk del --purge build-base autoconf mysql-dev libexif-dev libzip-dev oniguruma-dev imagemagick-dev libjpeg-turbo-dev libpng-dev freetype-dev
 
 # Instalar Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # 2. Configurar el usuario y directorio de trabajo
-# Crear un usuario 'www-data' (estándar de Apache/Nginx/PHP)
+# Crear un usuario 'www-data' (estándar)
 RUN adduser -D -g 'www-data' www-data
 
 WORKDIR /var/www/html
 
 # 3. Copiar la aplicación
 # Copiar archivos de configuración de Docker (nginx, supervisor, entrypoint)
-# NOTA: Asegúrate de que supervisord.conf, .docker/nginx/default.conf, y .docker/docker-entrypoint.sh existan
+
+# 🛑 RUTA AJUSTADA O ASUMIDA:
+# Asumo que debes colocar supervisord.conf dentro de la carpeta .docker/
 COPY .docker/supervisord.conf /etc/supervisord.conf
 COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY .docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# También puedes copiar el php-fpm.conf si lo necesitas para configuración avanzada:
+# COPY .docker/php-fpm/php-fpm.conf /usr/local/etc/php-fpm.d/zz-docker.conf
 
 # Dar permisos de ejecución al script de entrada
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
@@ -72,7 +74,8 @@ RUN composer install --no-dev --prefer-dist --optimize-autoloader
 # 5. Configuración de Nginx y Permisos: Crear logs, configurar el usuario, y limpiar.
 RUN mkdir -p /var/www/html/public \
     && chown -R www-data:www-data /var/www/html \
-    && chown -R www-data:www-data /var/lib/nginx
+    && chown -R www-data:www-data /var/lib/nginx \
+    && chown -R www-data:www-data /var/log/nginx
 
 # Exponer el puerto de Nginx (80)
 EXPOSE 80
