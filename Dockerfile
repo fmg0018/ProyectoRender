@@ -29,16 +29,17 @@ WORKDIR /var/www/html
 # RUN composer install --no-dev --prefer-dist --optimize-autoloader
 
 # Seccion 4: Archivos de configuracion de Nginx/PHP-FPM/Supervisor
-# Copiar el Nginx global minimalista (para corregir el fallo del PID y el usuario global)
+# Copiar el Nginx global minimalista (corrige PID y usa user www-data)
 COPY .docker/nginx/nginx.conf /etc/nginx/nginx.conf
 
-# Copiar la configuración específica de la app (corregida con 0.0.0.0:80 y sin 'user')
+# Copiar la configuración específica de la app (corregida: sin 'user' y con logging)
 COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 
 COPY .docker/php-fpm/php-fpm.conf /usr/local/etc/php-fpm.conf
 COPY .docker/supervisord.conf /etc/supervisord.conf
 
 # SECCIÓN 5: PERMISOS
+# Asegura que el usuario www-data tiene permisos de escritura
 RUN mkdir -p /var/www/html/public \
     && mkdir -p /var/log/nginx \
     && mkdir -p /var/log/supervisor \
@@ -50,4 +51,5 @@ RUN mkdir -p /var/www/html/public \
 EXPOSE 80
 
 # COMANDO DE INICIO FINAL: Ejecutar Supervisor en modo foreground (-n)
+# Esto mantiene el contenedor vivo.
 CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisord.conf"]
