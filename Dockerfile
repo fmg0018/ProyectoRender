@@ -1,3 +1,4 @@
+
 # ==============================================================================
 # ETAPA 1: BUILDER DE FRONTEND (Compila activos con Node/Vite)
 # ==============================================================================
@@ -56,16 +57,20 @@ COPY --from=builder /app/node_modules /var/www/html/node_modules
 COPY --from=builder /app/package.json /var/www/html/package.json
 COPY --from=builder /app/package-lock.json /var/www/html/package-lock.json
 
-
 # INSTALACION DE DEPENDENCIAS DE PHP
 RUN composer install --no-dev --prefer-dist --optimize-autoloader
 
-# SECCION 3: CONFIGURACION DE LARAVEL (CLAVE Y PERMISOS)
-# Copia .env.example si no hay .env (Render debería inyectar variables)
+# SECCION 3: CONFIGURACION DE LARAVEL (CLAVE, CACHE Y PERMISOS)
+# Copia .env.example si no hay .env
 RUN cp .env.example .env
 
 # Generar la clave de la aplicación.
 RUN php artisan key:generate
+
+# *** SOLUCION FINAL PARA PROBLEMAS DE RUTA/CACHE: FORZAR CACHE DE PRODUCCION ***
+RUN php artisan config:cache
+RUN php artisan route:cache
+RUN php artisan view:cache
 
 # Configuración de permisos de cache y storage para el usuario www-data
 RUN chown -R www-data:www-data /var/www/html/storage \
