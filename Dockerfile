@@ -1,3 +1,5 @@
+
+
 # Seccion 1: PHP-FPM como base
 FROM php:8.2-fpm-alpine
 
@@ -27,22 +29,31 @@ WORKDIR /var/www/html
 # *** CRUCIAL: COPIAR EL CODIGO FUENTE (incluyendo composer.json) ANTES DE INSTALAR ***
 COPY . .
 
-# INSTALACION CRITICA DE DEPENDENCIAS: AHORA ENCONTRARA composer.json
+# INSTALACION CRITICA DE DEPENDENCIAS
 RUN composer install --no-dev --prefer-dist --optimize-autoloader
 
-# Seccion 4: Archivos de configuracion de Nginx/PHP-FPM
+# SECCION 4: CONFIGURACION DE LARAVEL (CLAVE Y PERMISOS DE STORAGE)
+# Copia .env.example si no hay .env (Render debería inyectar variables)
+RUN cp .env.example .env
+
+# Generar la clave de la aplicación.
+RUN php artisan key:generate
+
+# Configuración de permisos de cache y storage para el usuario www-data
+RUN chown -R www-data:www-data /var/www/html/storage \
+    && chown -R www-data:www-data /var/www/html/bootstrap/cache
+
+# Seccion 5: Archivos de configuracion de Nginx/PHP-FPM
 COPY .docker/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY .docker/php-fpm/php-fpm.conf /usr/local/etc/php-fpm.conf
 
-# SECCION 5: ENTRYPOINT
+# SECCION 6: ENTRYPOINT
 COPY .docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# SECCIÓN 6: PERMISOS
-RUN mkdir -p /var/www/html/public \
-    && mkdir -p /var/log/nginx \
-    && chown -R www-data:www-data /var/www/html \
+# SECCIÓN 7: PERMISOS FINALES
+RUN chown -R www-data:www-data /var/www/html \
     && chown -R www-data:www-data /var/lib/nginx \
     && chown -R www-data:www-data /var/log
 
