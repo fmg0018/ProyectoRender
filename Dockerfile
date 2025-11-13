@@ -34,7 +34,7 @@ WORKDIR /var/www/html
 # Copiar archivos de configuración de Docker (nginx, supervisor, entrypoint)
 
 # ASUMIENDO que supervisord.conf está directamente en .docker/
-COPY .docker/supervisord.conf /etc/supervisord.conf
+COPY supervisord.conf /etc/supervisord.conf
 
 # LÍNEA CORREGIDA: Apunta a la subcarpeta 'nginx'
 COPY .docker/nginx/default.conf /etc/nginx/conf.d/default.conf
