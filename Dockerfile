@@ -29,6 +29,7 @@ FROM php:8.2-fpm-alpine
 ARG APP_ENV=production
 
 # Seccion 1: Dependencias del sistema y de PHP (Laravel)
+# *** INICIO DEL CÓDIGO CORREGIDO PARA POSTGRESQL ***
 RUN apk add --no-cache \
     git \
     nginx \
@@ -38,9 +39,23 @@ RUN apk add --no-cache \
     libxml2-dev \
     libzip-dev \
     linux-headers \
-    && docker-php-ext-install pdo_sqlite pdo_mysql zip opcache sockets \
+    # Librerías del sistema necesarias para PostgreSQL
+    libpq \
+    libpq-dev \
+    # -------------------------------------------------------------------------
+    && docker-php-ext-install \
+    # Extensiones de PHP para PostgreSQL (soluciona 'could not find driver')
+       pdo_pgsql \
+       pgsql \
+    # Otras extensiones previamente instaladas
+       pdo_sqlite \
+       pdo_mysql \
+       zip \
+       opcache \
+       sockets \
     && docker-php-ext-enable opcache \
     && rm -rf /var/cache/apk/*
+# *** FIN DEL CÓDIGO CORREGIDO PARA POSTGRESQL ***
 
 # Seccion 2: Composer y Directorio de Trabajo
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
