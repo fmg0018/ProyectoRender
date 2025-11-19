@@ -1,0 +1,103 @@
+{
+  "name": "Enviar Email Nueva Factura",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "factura-creada",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-factura-creada",
+      "name": "Webhook - Nueva Factura",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "factura-creada"
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@tuempresa.com",
+        "toEmail": "={{ $json.body.cliente.email }}",
+        "subject": "=Nueva Factura #{{ $json.body.factura.numero_factura }}",
+        "emailType": "text",
+        "message": "=Hola {{ $json.body.cliente.nombre }},\n\nSe ha creado una nueva factura a tu nombre:\n\n📋 DETALLES DE LA FACTURA:\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nNúmero de Factura: {{ $json.body.factura.numero_factura }}\nFecha de Emisión: {{ $json.body.factura.fecha_emision }}\nFecha de Vencimiento: {{ $json.body.factura.fecha_vencimiento }}\nEstado: {{ $json.body.factura.estado }}\n\n💰 IMPORTES:\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nSubtotal: ${{ $json.body.factura.subtotal }}\nImpuestos: ${{ $json.body.factura.impuestos }}\nTOTAL: ${{ $json.body.factura.total }}\n\n📝 Descripción:\n{{ $json.body.factura.descripcion }}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nPuedes acceder a tu factura completa en nuestro portal.\n\nGracias por tu confianza.\n\nSaludos,\nEl equipo de facturación",
+        "options": {}
+      },
+      "id": "send-email-cliente",
+      "name": "Enviar Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "1",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "success"
+            },
+            {
+              "name": "message",
+              "value": "=Email enviado a {{ $json.body.cliente.email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "response-success",
+      "name": "Respuesta",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        690,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - Nueva Factura": {
+      "main": [
+        [
+          {
+            "node": "Enviar Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Email": {
+      "main": [
+        [
+          {
+            "node": "Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1",
+  "id": "workflow-factura-crm",
+  "meta": {
+    "instanceId": "your-instance-id"
+  },
+  "tags": []
+}

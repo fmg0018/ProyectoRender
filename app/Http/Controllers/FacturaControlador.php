@@ -10,6 +10,7 @@ use App\Mail\FacturaEnviada;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
+use App\Services\N8nWebhookService;
 
 class FacturaControlador extends Controller
 {
@@ -166,6 +167,14 @@ class FacturaControlador extends Controller
             $factura->total = round($factura->subtotal + $factura->impuestos, 2);
             $factura->save();
         }
+
+        // Enviar notificación a n8n con los datos de la factura y el cliente
+        $factura->load('cliente');
+        \Log::info('🚀 Intentando enviar factura a n8n', [
+            'factura_id' => $factura->id,
+            'cliente_email' => $factura->cliente->email
+        ]);
+        N8nWebhookService::notificarNuevaFactura($factura, $factura->cliente);
 
         return redirect()->route('facturas.show', $factura->id)->with('success', 'Factura creada correctamente');
     }
