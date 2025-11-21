@@ -66,6 +66,14 @@ class FacturaControlador extends Controller
     {
         $this->authorizeAccess();
 
+        // LOG DE PRUEBA - INICIO DEL MÉTODO
+        \Log::info('═══════════════════════════════════════════════════════');
+        \Log::info('🎯 STORE FACTURA - INICIO', [
+            'timestamp' => now()->toDateTimeString(),
+            'request_data' => $request->all()
+        ]);
+        \Log::info('═══════════════════════════════════════════════════════');
+
         $rules = [
             'cliente_id' => 'nullable|exists:clientes,id',
             'cliente_name' => 'nullable|string',
@@ -171,6 +179,16 @@ class FacturaControlador extends Controller
         // Recargar la factura con todos los datos necesarios
         $factura->refresh();
         $factura->load('cliente');
+        
+        \Log::info('═══════════════════════════════════════════════════════');
+        \Log::info('💾 FACTURA CREADA - PREPARANDO ENVÍO A N8N', [
+            'factura_id' => $factura->id,
+            'numero_factura' => $factura->numero_factura,
+            'cliente_id' => $factura->cliente_id,
+            'tiene_cliente' => $factura->cliente !== null,
+            'cliente_email' => $factura->cliente ? $factura->cliente->email : 'NO DISPONIBLE'
+        ]);
+        \Log::info('═══════════════════════════════════════════════════════');
         
         // Enviar notificación a n8n con los datos de la factura y el cliente
         try {
