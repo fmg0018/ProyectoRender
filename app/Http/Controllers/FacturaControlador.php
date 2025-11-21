@@ -168,13 +168,33 @@ class FacturaControlador extends Controller
             $factura->save();
         }
 
-        // Enviar notificación a n8n con los datos de la factura y el cliente
+        // Recargar la factura con todos los datos necesarios
+        $factura->refresh();
         $factura->load('cliente');
-        \Log::info('🚀 Intentando enviar factura a n8n', [
-            'factura_id' => $factura->id,
-            'cliente_email' => $factura->cliente->email
-        ]);
-        N8nWebhookService::notificarNuevaFactura($factura, $factura->cliente);
+        
+        // Enviar notificación a n8n con los datos de la factura y el cliente
+        try {
+            \Log::info('🚀 Intentando enviar factura a n8n', [
+                'factura_id' => $factura->id,
+                'cliente_id' => $factura->cliente_id,
+                'cliente_email' => $factura->cliente ? $factura->cliente->email : 'NO CLIENTE',
+                'tiene_cliente' => $factura->cliente !== null
+            ]);
+            
+            if ($factura->cliente) {
+                N8nWebhookService::notificarNuevaFactura($factura, $factura->cliente);
+            } else {
+                \Log::error('❌ No se pudo cargar el cliente de la factura', [
+                    'factura_id' => $factura->id,
+                    'cliente_id' => $factura->cliente_id
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Log::error('💥 Error al intentar notificar a n8n', [
+                'error' => $e->getMessage(),
+                'factura_id' => $factura->id
+            ]);
+        }
 
         return redirect()->route('facturas.show', $factura->id)->with('success', 'Factura creada correctamente');
     }
