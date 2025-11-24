@@ -16,7 +16,7 @@ class N8nWebhookService
      */
     public static function notificarNuevaFactura($factura, $cliente)
     {
-        $webhookUrl = env('N8N_WEBHOOK_URL');
+        $webhookUrl = config('n8n.webhook_url');
 
         Log::info('🔔 N8nWebhookService::notificarNuevaFactura llamado', [
             'webhook_url' => $webhookUrl ? 'CONFIGURADA' : 'NO CONFIGURADA',
