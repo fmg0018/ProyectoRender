@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\ClienteModelo;
 use App\Models\IncidenciaModelo;
 use App\Models\User;
+use App\Services\N8nWebhookService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 class IncidenciaControlador extends Controller
@@ -65,6 +67,12 @@ class IncidenciaControlador extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        Log::info('🎯 STORE INCIDENCIA - INICIO', [
+            'timestamp' => now()->toDateTimeString(),
+            'request_data' => $request->all()
+        ]);
+        Log::info('═══════════════════════════════════════════════════════');
+
         $data = $request->validate([
             'titulo' => ['required', 'string', 'max:255'],
             'descripcion' => ['required', 'string'],
@@ -80,7 +88,45 @@ class IncidenciaControlador extends Controller
             ? Carbon::today()->toDateString()
             : null;
 
-        IncidenciaModelo::create($data);
+        $incidencia = IncidenciaModelo::create($data);
+
+        Log::info('═══════════════════════════════════════════════════════');
+        Log::info('💾 INCIDENCIA CREADA - PREPARANDO ENVÍO A N8N', [
+            'incidencia_id' => $incidencia->id,
+            'titulo' => $incidencia->titulo,
+            'cliente_id' => $data['cliente_id'],
+            'user_id' => $data['user_id']
+        ]);
+        Log::info('═══════════════════════════════════════════════════════');
+
+        // Obtener cliente y responsable con sus relaciones
+        $cliente = ClienteModelo::find($data['cliente_id']);
+        $responsable = User::find($data['user_id']);
+
+        if ($cliente && $cliente->email && $responsable) {
+            Log::info('🚀 Intentando enviar incidencia a n8n', [
+                'incidencia_id' => $incidencia->id,
+                'cliente_id' => $cliente->id,
+                'cliente_email' => $cliente->email,
+                'responsable_id' => $responsable->id,
+                'responsable_nombre' => $responsable->name
+            ]);
+
+            try {
+                N8nWebhookService::notificarNuevaIncidencia($incidencia, $cliente, $responsable);
+            } catch (\Exception $e) {
+                Log::error('💥 Error al notificar incidencia a n8n', [
+                    'incidencia_id' => $incidencia->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        } else {
+            Log::warning('⚠️ No se puede notificar incidencia a n8n', [
+                'cliente_existe' => $cliente ? 'SI' : 'NO',
+                'cliente_tiene_email' => $cliente && $cliente->email ? 'SI' : 'NO',
+                'responsable_existe' => $responsable ? 'SI' : 'NO'
+            ]);
+        }
 
         return redirect()
             ->route('incidencias.index')
